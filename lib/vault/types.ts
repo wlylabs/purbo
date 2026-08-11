@@ -45,6 +45,16 @@ export interface KeyEnvelope {
   readonly kdf: KdfParams;
   readonly wrapped: SealedBox;
   /**
+   * A known constant sealed under a key derived from the root key.
+   *
+   * This is what lets the recovery path tell "the right phrase" from "a
+   * different phrase that happens to have a valid checksum". Without it,
+   * recovery would accept any well-formed phrase and silently re-wrap the
+   * vault around the wrong key. It reveals nothing: it is a ciphertext under
+   * a key that an attacker would already need the root key to derive.
+   */
+  readonly verifier: SealedBox;
+  /**
    * HKDF salt for root -> data-key expansion. Public by design; HKDF salts
    * are not secrets, they just separate derivations.
    */

@@ -60,6 +60,10 @@ truncated SHA-256 hashes rather than raw Privy identifiers.
 - **KDF parameters are validated on both sides.** Cost parameters travel with
   the ciphertext, so a compromised server could otherwise hand back
   `iterations: 1` and silently downgrade every future unlock.
+- **Recovery fails closed.** The envelope carries a verifier — a constant
+  sealed under a subkey of the root key — so a checksum-valid phrase that
+  belongs to a *different* vault is rejected instead of re-wrapping the vault
+  around a key that decrypts nothing.
 - **Keys are non-extractable.** The data key is a `CryptoKey` that script can
   use but cannot read out, and intermediate key bytes are zeroed after use.
 - **The vault re-locks** after inactivity, and copied passwords are cleared

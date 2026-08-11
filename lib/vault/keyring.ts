@@ -20,7 +20,7 @@
  * can reset a passphrase or recover a vault. That is the point.
  */
 
-import { importAesKey, open, seal } from "@/lib/crypto/aead";
+import { importAesKey, open, seal, type SealedBox } from "@/lib/crypto/aead";
 import {
   DEFAULT_KDF_PARAMS,
   assertAcceptableKdfParams,
@@ -32,12 +32,18 @@ import {
   fromBase64Url,
   randomBytes,
   toBase64Url,
+  utf8Decode,
+  utf8Encode,
   wipe,
 } from "@/lib/crypto/primitives";
 import type { KeyEnvelope } from "./types";
 
 const ROOT_INFO = "purbo:root:v1";
 const DATA_INFO = "purbo:data:v1";
+const VERIFY_INFO = "purbo:verify:v1";
+
+/** Sealed under the verify subkey to prove a root key belongs to a vault. */
+const VERIFIER_PLAINTEXT = "purbo:root-key-check:v1";
 
 /** AAD binding a wrapped root key to its owner. */
 function envelopeAad(userId: string): string {
@@ -47,6 +53,52 @@ function envelopeAad(userId: string): string {
 /** AAD binding an entry ciphertext to its owner and its id. */
 export function itemAad(userId: string, itemId: string): string {
   return `purbo:item:v1:${userId}:${itemId}`;
+}
+
+/** AAD binding the root-key verifier to its owner. */
+function verifierAad(userId: string): string {
+  return `purbo:verifier:v1:${userId}`;
+}
+
+/** Seals the verifier constant under a subkey of the root key. */
+async function buildVerifier(
+  userId: string,
+  rootKey: Uint8Array,
+  rootSalt: Uint8Array,
+): Promise<SealedBox> {
+  const verifyKeyBytes = await hkdf(rootKey, VERIFY_INFO, 32, rootSalt);
+  try {
+    const verifyKey = await importAesKey(verifyKeyBytes);
+    return await seal(verifyKey, utf8Encode(VERIFIER_PLAINTEXT), verifierAad(userId));
+  } finally {
+    wipe(verifyKeyBytes);
+  }
+}
+
+/**
+ * Confirms a candidate root key is the one this vault was built with.
+ *
+ * The recovery phrase alone cannot be checked against the envelope — that is
+ * wrapped under the passphrase, which a recovering user does not have. This
+ * closes that gap so a wrong-but-valid phrase fails here rather than silently
+ * re-wrapping the vault around a key that decrypts nothing.
+ */
+async function assertRootKeyMatches(
+  userId: string,
+  envelope: KeyEnvelope,
+  rootKey: Uint8Array,
+  rootSalt: Uint8Array,
+): Promise<void> {
+  const verifyKeyBytes = await hkdf(rootKey, VERIFY_INFO, 32, rootSalt);
+  try {
+    const verifyKey = await importAesKey(verifyKeyBytes);
+    const opened = await open(verifyKey, envelope.verifier, verifierAad(userId));
+    if (utf8Decode(opened) !== VERIFIER_PLAINTEXT) throw new Error("verifier mismatch");
+  } catch {
+    throw new IncorrectRecoveryPhraseError();
+  } finally {
+    wipe(verifyKeyBytes);
+  }
 }
 
 /**
@@ -99,6 +151,7 @@ export async function createKeyring(
       salt: toBase64Url(kdfSalt),
       kdf: DEFAULT_KDF_PARAMS,
       wrapped,
+      verifier: await buildVerifier(userId, rootKey, rootSalt),
       rootSalt: toBase64Url(rootSalt),
       createdAt: Date.now(),
     };
@@ -155,6 +208,7 @@ export async function unlockWithRecoveryPhrase(
   let rootKey: Uint8Array | null = null;
   try {
     rootKey = await hkdf(seed, ROOT_INFO, 32, rootSalt);
+    await assertRootKeyMatches(userId, envelope, rootKey, rootSalt);
     return await rootToKeyring(userId, rootKey, rootSalt);
   } finally {
     wipe(seed, rootKey);
@@ -182,6 +236,9 @@ export async function rewrapWithNewPassphrase(
 
   try {
     rootKey = await hkdf(seed, ROOT_INFO, 32, rootSalt);
+    // Refuse to re-wrap around a key this vault was not built with.
+    await assertRootKeyMatches(userId, envelope, rootKey, rootSalt);
+
     kek = await deriveKeyEncryptionKey(newPassphrase, kdfSalt, DEFAULT_KDF_PARAMS);
     const wrapKey = await importAesKey(kek);
     const wrapped = await seal(wrapKey, rootKey, envelopeAad(userId));
@@ -191,6 +248,8 @@ export async function rewrapWithNewPassphrase(
       salt: toBase64Url(kdfSalt),
       kdf: DEFAULT_KDF_PARAMS,
       wrapped,
+      // The root key is unchanged, so the existing verifier still applies.
+      verifier: envelope.verifier,
       rootSalt: envelope.rootSalt,
       createdAt: envelope.createdAt,
     };
@@ -203,5 +262,12 @@ export class IncorrectPassphraseError extends Error {
   constructor() {
     super("That passphrase does not unlock this vault.");
     this.name = "IncorrectPassphraseError";
+  }
+}
+
+export class IncorrectRecoveryPhraseError extends Error {
+  constructor() {
+    super("That recovery phrase does not belong to this vault.");
+    this.name = "IncorrectRecoveryPhraseError";
   }
 }

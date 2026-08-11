@@ -25,6 +25,7 @@ import {
   unlockWithRecoveryPhrase,
   rewrapWithNewPassphrase,
   IncorrectPassphraseError,
+  IncorrectRecoveryPhraseError,
 } from "@/lib/vault/keyring";
 import { encryptItem, decryptItem, decryptAll, draftToItem } from "@/lib/vault/records";
 
@@ -273,16 +274,38 @@ await test("recovery phrase unlocks without the passphrase", async () => {
   assert.equal((await decryptItem(viaPhrase, encrypted)).password, "vault-value");
 });
 
-await test("a different phrase does not open the vault", async () => {
+await test("a different phrase is rejected outright", async () => {
   const phrase = createRecoveryPhrase();
-  const { envelope, keyring } = await createKeyring(USER, phrase, "original-passphrase-1");
-  const encrypted = await encryptItem(
-    keyring,
-    draftToItem({ name: "X", username: "y", password: "z" }),
-  );
+  const { envelope } = await createKeyring(USER, phrase, "original-passphrase-1");
 
-  const impostor = await unlockWithRecoveryPhrase(USER, envelope, createRecoveryPhrase());
-  await assert.rejects(() => decryptItem(impostor, encrypted));
+  // Must fail at the verifier, not silently return a keyring that decrypts
+  // nothing — that is what would let recovery re-wrap the wrong root key.
+  await assert.rejects(
+    () => unlockWithRecoveryPhrase(USER, envelope, createRecoveryPhrase()),
+    (error: unknown) => error instanceof IncorrectRecoveryPhraseError,
+  );
+});
+
+await test("another user cannot recover with a valid phrase", async () => {
+  const phrase = createRecoveryPhrase();
+  const { envelope } = await createKeyring(USER, phrase, "original-passphrase-1");
+
+  await assert.rejects(
+    () => unlockWithRecoveryPhrase(OTHER_USER, envelope, phrase),
+    (error: unknown) => error instanceof IncorrectRecoveryPhraseError,
+  );
+});
+
+await test("rewrapping refuses a phrase from a different vault", async () => {
+  const phrase = createRecoveryPhrase();
+  const { envelope } = await createKeyring(USER, phrase, "original-passphrase-1");
+
+  // The critical case: a checksum-valid but wrong phrase must not replace the
+  // envelope, which would strand every existing entry.
+  await assert.rejects(
+    () => rewrapWithNewPassphrase(USER, envelope, createRecoveryPhrase(), "new-passphrase-11"),
+    (error: unknown) => error instanceof IncorrectRecoveryPhraseError,
+  );
 });
 
 await test("rewrapping keeps existing entries readable", async () => {

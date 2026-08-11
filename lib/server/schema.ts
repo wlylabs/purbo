@@ -40,6 +40,7 @@ export const keyEnvelopeSchema = z
     salt: base64Url(64),
     kdf: kdfParams,
     wrapped: sealedBox,
+    verifier: sealedBox,
     rootSalt: base64Url(128),
     createdAt: z.number().int().nonnegative(),
   })
