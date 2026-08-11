@@ -8,6 +8,7 @@ import {
   HowItWorks,
   Security,
 } from "@/components/landing/sections";
+import { InstallBanner } from "@/components/pwa/install-prompt";
 
 export default function LandingPage() {
   // Read once on the server: the marketing page must render even when the
@@ -26,6 +27,7 @@ export default function LandingPage() {
         <CallToAction configured={configured} />
       </main>
       <Footer />
+      <InstallBanner />
     </>
   );
 }

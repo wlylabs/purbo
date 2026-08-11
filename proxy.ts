@@ -100,10 +100,13 @@ export const config = {
   matcher: [
     /*
      * Everything except static assets, which are immutable and public —
-     * running the nonce generator for each of them is pure overhead.
+     * running the nonce generator for each of them is pure overhead. The
+     * service worker is excluded too: its script runs in its own context and
+     * takes no part in the document's nonce.
      */
     {
-      source: "/((?!_next/static|_next/image|favicon.ico|robots.txt|manifest.webmanifest).*)",
+      source:
+        "/((?!_next/static|_next/image|favicon.ico|robots.txt|manifest.webmanifest|sw.js|icons/).*)",
       missing: [
         { type: "header", key: "next-router-prefetch" },
         { type: "header", key: "purpose", value: "prefetch" },

@@ -10,6 +10,7 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
+    "icons": "node scripts/generate-icons.mjs",
     "test": "node --experimental-strip-types --no-warnings --import ./tests/register.mjs tests/crypto.test.ts"
   },
   "dependencies": {
