@@ -13,6 +13,7 @@ The server stores ciphertext and nothing else.
 | --- | --- |
 | Framework | Next.js 16 (App Router), React 19, TypeScript |
 | Styling | Tailwind CSS v4, Geist Sans/Mono |
+| App shell | Installable PWA — web app manifest, hand-written service worker |
 | Auth | [Privy](https://privy.io) — email, Google, GitHub or an existing wallet |
 | Storage | Upstash / Vercel KV (encrypted blobs only) |
 | Crypto | WebCrypto (AES-256-GCM, HKDF-SHA-256), Argon2id via `hash-wasm`, BIP39 via `@scure/bip39` |
@@ -74,6 +75,34 @@ truncated SHA-256 hashes rather than raw Privy identifiers.
   preload, `frame-ancestors 'none'`, COOP/CORP isolation and `no-referrer`.
 - **Rate limits** on every vault route, keyed per user.
 
+## Installing it
+
+Purbo is a progressive web app. Installed, it opens in its own window from a
+home screen or a dock and keeps working with no connection at all: the vault's
+ciphertext is already in IndexedDB and the keys are derived on the device, so
+`public/sw.js` only has to make sure the code that decrypts it loads. Syncing
+is the one thing that waits for the network.
+
+The service worker is written by hand rather than generated, because a cache
+living inside the origin that holds the vault deserves to be readable end to
+end. Its rules:
+
+- **`/api/` is never cached** — not read from, not written to, under any
+  strategy. Vault ciphertext reaches the cache layer only through IndexedDB,
+  where the app put it deliberately.
+- **Cross-origin responses are never stored**, so nothing from Privy or any
+  other third party ends up in a cache this origin controls.
+- **Navigations are network-first**, falling back to the cached shell and then
+  to `/offline`; `/_next/static/*` is cache-first because it is
+  content-hashed; other same-origin assets are stale-while-revalidate.
+- **Updates are never applied silently.** A new worker waits until the user
+  accepts the prompt, because activating it reloads the page and a reload
+  discards the in-memory key — the vault would lock mid-use.
+
+Icons are generated from the same keyhole mark the app draws, rasterised from
+signed distance fields by `scripts/generate-icons.mjs` — `npm run icons` — so
+no image toolchain enters the dependency tree. The output is committed.
+
 ### The trade-off
 
 Because no key material reaches the server, **nobody can reset a passphrase or
@@ -126,13 +155,18 @@ your users.
 app/
   page.tsx            Landing page
   vault/              Authenticated app (onboarding, unlock, dashboard)
+  offline/            Service-worker fallback for uncached navigations
+  manifest.ts         Web app manifest
   api/vault/          GET/PUT/DELETE encrypted blobs
 lib/
   crypto/             Primitives, KDFs, AEAD, BIP39, generator
   vault/              Key hierarchy, record encryption, state machine
   storage/            IndexedDB cache and the remote sync client
+  pwa/                Install-prompt state
   server/             Auth, KV driver, rate limiting, wire validation
 components/           Landing sections, vault UI, design-system primitives
+public/sw.js          Service worker — app shell only, never vault data
+scripts/              Icon generation
 proxy.ts              Per-request CSP nonce and security headers
 tests/                Crypto and key-hierarchy checks
 ```

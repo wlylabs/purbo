@@ -3,6 +3,7 @@ import { GeistMono } from "geist/font/mono";
 import { GeistSans } from "geist/font/sans";
 import { headers } from "next/headers";
 
+import { ServiceWorker } from "@/components/pwa/service-worker";
 import { THEME_SCRIPT } from "@/components/theme";
 import { Providers } from "./providers";
 import "./globals.css";
@@ -16,6 +17,17 @@ export const metadata: Metadata = {
     "Purbo is a zero-knowledge password manager with a wallet-style recovery phrase. " +
     "Everything is encrypted in your browser before it leaves the device.",
   applicationName: "Purbo",
+  manifest: "/manifest.webmanifest",
+  // Installed on iOS, Purbo runs without Safari's chrome; the status bar is
+  // left to follow the page's theme colour rather than being forced dark.
+  appleWebApp: {
+    capable: true,
+    title: "Purbo",
+    statusBarStyle: "default",
+  },
+  // Vault entries contain digits that are not phone numbers; iOS turning
+  // them into call links is both wrong and ugly.
+  formatDetection: { telephone: false, address: false, email: false },
   robots: {
     index: true,
     follow: true,
@@ -66,6 +78,7 @@ export default async function RootLayout({
           Skip to content
         </a>
         <Providers appId={appId}>{children}</Providers>
+        <ServiceWorker />
       </body>
     </html>
   );

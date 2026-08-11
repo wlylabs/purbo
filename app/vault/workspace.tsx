@@ -13,6 +13,7 @@ import { AppHeader } from "@/components/vault/app-header";
 import { Dashboard } from "@/components/vault/dashboard";
 import { LockScreen } from "@/components/vault/lock-screen";
 import { Onboarding } from "@/components/vault/onboarding";
+import { isStandalone } from "@/lib/pwa/install";
 import { useVault } from "@/lib/vault/provider";
 
 /**
@@ -79,9 +80,10 @@ function AuthGate() {
   const router = useRouter();
 
   // A signed-out visitor who lands here directly goes back to the marketing
-  // page rather than staring at a dead screen.
+  // page rather than staring at a dead screen. An installed app starts here
+  // by design, though — bouncing it to the pitch page would be absurd.
   useEffect(() => {
-    if (ready && !authenticated) {
+    if (ready && !authenticated && !isStandalone()) {
       const timer = window.setTimeout(() => router.replace("/"), 4000);
       return () => window.clearTimeout(timer);
     }

@@ -3,6 +3,7 @@
 import { AlertTriangle, Download } from "lucide-react";
 import { useState } from "react";
 
+import { InstallSection } from "@/components/pwa/install-prompt";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, Notice, Separator } from "@/components/ui/primitives";
@@ -104,6 +105,10 @@ export function SettingsView() {
             </div>
           ))}
         </dl>
+      </Card>
+
+      <Card className="p-5 sm:p-6">
+        <InstallSection />
       </Card>
 
       <Card className="p-5 sm:p-6">

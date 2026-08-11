@@ -38,7 +38,7 @@ export function Nav({ configured }: { configured: boolean }) {
   return (
     <header
       className={cn(
-        "sticky top-0 z-40 transition-colors duration-200",
+        "pt-safe sticky top-0 z-40 transition-colors duration-200",
         scrolled || menuOpen
           ? "bg-canvas/85 backdrop-blur-md border-b border-line"
           : "border-b border-transparent",

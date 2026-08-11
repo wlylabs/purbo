@@ -155,8 +155,8 @@ export function Features() {
     },
     {
       icon: WifiOff,
-      title: "Works offline",
-      body: "The encrypted vault is cached in IndexedDB. Open it, read it and edit it with no network; changes push when you reconnect.",
+      title: "Installs and works offline",
+      body: "Add Purbo to a home screen or dock and it opens in its own window. The app and your encrypted vault are both cached on the device, so unlocking needs no network; changes push when you reconnect.",
     },
     {
       icon: KeyRound,

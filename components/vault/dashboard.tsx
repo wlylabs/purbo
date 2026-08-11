@@ -1,7 +1,7 @@
 "use client";
 
 import { KeyRound, Settings, Wand2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { cn } from "@/lib/utils";
 import { Generator } from "./generator";
@@ -16,11 +16,23 @@ const TABS: { id: Tab; label: string; icon: typeof KeyRound }[] = [
   { id: "settings", label: "Settings", icon: Settings },
 ];
 
+function isTab(value: string | null): value is Tab {
+  return value === "vault" || value === "generator" || value === "settings";
+}
+
 export function Dashboard() {
   const [tab, setTab] = useState<Tab>("vault");
 
+  // `?tab=` backs the manifest's app shortcuts, so "Password generator" on a
+  // long-press of the installed icon lands somewhere useful. Read after mount
+  // rather than during render: the server has no query string to match.
+  useEffect(() => {
+    const requested = new URLSearchParams(window.location.search).get("tab");
+    if (isTab(requested)) setTab(requested);
+  }, []);
+
   return (
-    <div className="mx-auto max-w-6xl px-5 py-8 sm:px-6 sm:py-10">
+    <div className="mx-auto max-w-6xl px-5 pt-8 pb-[calc(2rem+env(safe-area-inset-bottom))] sm:px-6 sm:pt-10 sm:pb-[calc(2.5rem+env(safe-area-inset-bottom))]">
       <nav
         aria-label="Vault sections"
         className="mb-8 inline-flex rounded-[var(--radius-sm)] border border-line p-0.5"
