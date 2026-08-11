@@ -1,0 +1,257 @@
+@import "tailwindcss";
+
+/*
+ * Purbo design tokens.
+ *
+ * Monochrome base, one inverted primary, colour reserved for meaning
+ * (strength, sync state, danger). Flat surfaces separated by 1px borders —
+ * no glows, no coloured shadows, no gradient fills on interactive elements.
+ */
+
+:root {
+  color-scheme: light;
+
+  --canvas: #ffffff;
+  --surface: #fafafa;
+  --elevated: #ffffff;
+  --overlay: rgb(9 9 11 / 0.4);
+
+  --line: #e6e6e9;
+  --line-strong: #d1d1d6;
+
+  --ink: #09090b;
+  --ink-muted: #52525b;
+  --ink-subtle: #8a8a93;
+
+  --invert-bg: #09090b;
+  --invert-fg: #fafafa;
+
+  --positive: #047857;
+  --caution: #b45309;
+  --critical: #be123c;
+  --info: #4338ca;
+
+  --ring: #09090b;
+
+  --radius: 0.75rem;
+  --radius-sm: 0.5rem;
+  --radius-lg: 1rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --canvas: #09090b;
+    --surface: #0e0e11;
+    --elevated: #141418;
+    --overlay: rgb(0 0 0 / 0.7);
+
+    --line: #1f1f25;
+    --line-strong: #2e2e37;
+
+    --ink: #fafafa;
+    --ink-muted: #a1a1aa;
+    --ink-subtle: #6e6e78;
+
+    --invert-bg: #fafafa;
+    --invert-fg: #09090b;
+
+    --positive: #34d399;
+    --caution: #fbbf24;
+    --critical: #fb7185;
+    --info: #a5b4fc;
+
+    --ring: #fafafa;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --canvas: #09090b;
+  --surface: #0e0e11;
+  --elevated: #141418;
+  --overlay: rgb(0 0 0 / 0.7);
+
+  --line: #1f1f25;
+  --line-strong: #2e2e37;
+
+  --ink: #fafafa;
+  --ink-muted: #a1a1aa;
+  --ink-subtle: #6e6e78;
+
+  --invert-bg: #fafafa;
+  --invert-fg: #09090b;
+
+  --positive: #34d399;
+  --caution: #fbbf24;
+  --critical: #fb7185;
+  --info: #a5b4fc;
+
+  --ring: #fafafa;
+}
+
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-elevated: var(--elevated);
+  --color-overlay: var(--overlay);
+
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-ink-subtle: var(--ink-subtle);
+
+  --color-invert-bg: var(--invert-bg);
+  --color-invert-fg: var(--invert-fg);
+
+  --color-positive: var(--positive);
+  --color-caution: var(--caution);
+  --color-critical: var(--critical);
+  --color-info: var(--info);
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", monospace;
+
+  --radius-base: var(--radius);
+}
+
+@layer base {
+  * {
+    border-color: var(--line);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background-color: var(--canvas);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background-color: var(--ink);
+    color: var(--canvas);
+  }
+
+  /* One consistent focus treatment; never removed, only restyled. */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
+
+  input,
+  textarea,
+  select,
+  button {
+    font: inherit;
+    color: inherit;
+  }
+
+  /* Browsers paint their own autofill background; force ours back. */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus {
+    -webkit-text-fill-color: var(--ink);
+    -webkit-box-shadow: 0 0 0 1000px var(--elevated) inset;
+    caret-color: var(--ink);
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--line-strong);
+    border-radius: 999px;
+    border: 3px solid var(--canvas);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--ink-subtle);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer components {
+  /* Display type: tight tracking, optical sizing on. */
+  .text-display {
+    letter-spacing: -0.035em;
+    line-height: 1.02;
+    font-weight: 500;
+  }
+
+  .text-label {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-subtle);
+  }
+
+  /* Faint grid, used behind the hero only. Static — no animation, no glow. */
+  .bg-grid {
+    background-image:
+      linear-gradient(to right, var(--line) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--line) 1px, transparent 1px);
+    background-size: 64px 64px;
+    -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 40%, transparent 100%);
+    mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 40%, transparent 100%);
+  }
+
+  .divide-line > * + * {
+    border-top: 1px solid var(--line);
+  }
+}
+
+@layer utilities {
+  .animate-in-up {
+    animation: in-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  @keyframes in-up {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  .animate-fade {
+    animation: fade 0.2s ease-out both;
+  }
+
+  @keyframes fade {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+}
