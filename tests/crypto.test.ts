@@ -23,9 +23,11 @@ import {
   createKeyring,
   exportRootMaterial,
   keyringFromRootMaterial,
+  keyringFromSessionKeys,
   unlockWithPassphrase,
   unlockWithRecoveryPhrase,
   rewrapWithNewPassphrase,
+  AccountMismatchError,
   IncorrectPassphraseError,
   IncorrectRecoveryPhraseError,
 } from "@/lib/vault/keyring";
@@ -363,6 +365,81 @@ await test("both unlock paths reach the same signing key", async () => {
 
   assert.deepEqual(viaPassphrase.identity.publicKey, viaPhrase.identity.publicKey);
   assert.equal(viaPassphrase.accountId, viaPhrase.accountId);
+});
+
+await test("every unlock path yields a keyring that can still sign", async () => {
+  const phrase = createRecoveryPhrase();
+  const { envelope, keyring } = await createKeyring(phrase, "a-long-passphrase-2");
+  const material = await exportRootMaterial(
+    keyring.accountId,
+    envelope,
+    "a-long-passphrase-2",
+  );
+
+  const message = challengeMessage("https://purbo.test", "nonce-for-signing", "pk");
+
+  // Matching public keys are not enough to call a keyring usable. Every
+  // derivation wipes its own buffers on the way out, and an identity that
+  // aliased one of them would carry a correct-looking account id and public
+  // key while producing signatures that verify as false — a login that fails
+  // with nothing to show for it.
+  for (const current of [
+    keyring,
+    await unlockWithPassphrase(keyring.accountId, envelope, "a-long-passphrase-2"),
+    await unlockWithRecoveryPhrase(envelope, phrase),
+    await keyringFromRootMaterial(material),
+  ]) {
+    assert.equal(current.accountId, keyring.accountId);
+    assert.ok(
+      verifyChallenge(
+        signChallenge(current.identity.secret, message),
+        message,
+        current.identity.publicKey,
+      ),
+      "a keyring produced a signature that does not verify",
+    );
+  }
+});
+
+await test("a cached session rebuilds a working keyring without the root key", async () => {
+  const phrase = createRecoveryPhrase();
+  const { keyring } = await createKeyring(phrase, "a-long-passphrase-3");
+  const sealed = await encryptItem(
+    keyring,
+    draftToItem({ name: "Bank", username: "ada", password: "s3cret-value" }),
+  );
+
+  // What a reloaded tab has to work with: the data key and the auth secret,
+  // and nothing they were derived from.
+  const resumed = await keyringFromSessionKeys(
+    keyring.accountId,
+    keyring.dataKey,
+    keyring.identity.secret,
+  );
+
+  assert.equal((await decryptItem(resumed, sealed)).password, "s3cret-value");
+
+  const message = challengeMessage("https://purbo.test", "nonce-for-resume", "pk");
+  assert.ok(
+    verifyChallenge(
+      signChallenge(resumed.identity.secret, message),
+      message,
+      resumed.identity.publicKey,
+    ),
+  );
+
+  // A cached record cannot be replayed onto another account, however it got
+  // into the store.
+  const other = await createKeyring(createRecoveryPhrase(), "a-long-passphrase-4");
+  await assert.rejects(
+    () =>
+      keyringFromSessionKeys(
+        other.keyring.accountId,
+        keyring.dataKey,
+        keyring.identity.secret,
+      ),
+    (error: unknown) => error instanceof AccountMismatchError,
+  );
 });
 
 await test("a wrong passphrase is rejected uniformly", async () => {

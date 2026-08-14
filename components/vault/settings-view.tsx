@@ -13,7 +13,6 @@ import {
   PasskeyCancelledError,
   isPasskeySupported,
   listPasskeys,
-  removeAllPasskeys,
 } from "@/lib/auth/passkey";
 import { DEFAULT_KDF_PARAMS } from "@/lib/crypto/kdf";
 import { useVault } from "@/lib/vault/provider";
@@ -31,7 +30,7 @@ import type { PasskeySummary } from "@/lib/vault/types";
  * is a login they can reset.
  */
 function PasskeySection() {
-  const { addPasskey } = useVault();
+  const { addPasskey, forgetPasskeys } = useVault();
 
   const [supported, setSupported] = useState(false);
   const [passkeys, setPasskeys] = useState<PasskeySummary[] | null>(null);
@@ -159,7 +158,7 @@ function PasskeySection() {
                     setRemoving(true);
                     setError(null);
                     try {
-                      await removeAllPasskeys();
+                      await forgetPasskeys();
                       await refresh();
                     } catch (err) {
                       setError(
@@ -240,8 +239,9 @@ export function SettingsView() {
       <Card className="p-5 sm:p-6">
         <h2 className="text-[0.9375rem] font-semibold tracking-tight">Auto-lock</h2>
         <p className="mt-1 text-[0.8125rem] leading-relaxed text-ink-muted">
-          Locking clears the decryption key from memory. Anyone who reaches the tab afterwards
-          needs the passphrase again.
+          Reloading this tab resumes where you left off. Locking ends that: the decryption
+          key is dropped from memory and from the tab&rsquo;s cache, so anyone who reaches
+          the tab afterwards needs your passphrase or passkey again.
         </p>
         <div role="radiogroup" aria-label="Auto-lock delay" className="mt-4 flex flex-wrap gap-2">
           {AUTO_LOCK_CHOICES.map((choice) => (

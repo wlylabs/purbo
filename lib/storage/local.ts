@@ -7,45 +7,15 @@
  */
 
 import type { EncryptedVault } from "@/lib/vault/types";
-
-const DB_NAME = "purbo";
-const DB_VERSION = 1;
-const STORE = "vaults";
-
-function openDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-    request.onupgradeneeded = () => {
-      const db = request.result;
-      if (!db.objectStoreNames.contains(STORE)) {
-        db.createObjectStore(STORE);
-      }
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error ?? new Error("IndexedDB unavailable"));
-  });
-}
-
-async function withStore<T>(
-  mode: IDBTransactionMode,
-  fn: (store: IDBObjectStore) => IDBRequest<T>,
-): Promise<T> {
-  const db = await openDb();
-  try {
-    return await new Promise<T>((resolve, reject) => {
-      const tx = db.transaction(STORE, mode);
-      const request = fn(tx.objectStore(STORE));
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error ?? new Error("IndexedDB request failed"));
-    });
-  } finally {
-    db.close();
-  }
-}
+import { VAULT_STORE, withStore } from "./db";
 
 export async function readLocalVault(accountId: string): Promise<EncryptedVault | null> {
   try {
-    return (await withStore("readonly", (store) => store.get(accountId))) ?? null;
+    return (
+      (await withStore<EncryptedVault | undefined>(VAULT_STORE, "readonly", (store) =>
+        store.get(accountId),
+      )) ?? null
+    );
   } catch {
     return null;
   }
@@ -56,7 +26,7 @@ export async function writeLocalVault(
   vault: EncryptedVault,
 ): Promise<void> {
   try {
-    await withStore("readwrite", (store) => store.put(vault, accountId));
+    await withStore(VAULT_STORE, "readwrite", (store) => store.put(vault, accountId));
   } catch {
     // Private-browsing modes and storage-pressure evictions can refuse writes.
     // The remote copy remains authoritative, so this is a cache miss, not a
@@ -66,7 +36,7 @@ export async function writeLocalVault(
 
 export async function clearLocalVault(accountId: string): Promise<void> {
   try {
-    await withStore("readwrite", (store) => store.delete(accountId));
+    await withStore(VAULT_STORE, "readwrite", (store) => store.delete(accountId));
   } catch {
     /* nothing recoverable to do */
   }
@@ -102,6 +72,44 @@ export function writeActiveAccount(accountId: string): void {
 export function clearActiveAccount(): void {
   try {
     window.localStorage.removeItem(ACTIVE_ACCOUNT_KEY);
+  } catch {
+    /* nothing recoverable to do */
+  }
+}
+
+/**
+ * Whether this device has ever opened the vault with a passkey.
+ *
+ * Purely a UI hint, and deliberately not a secret: it decides whether the lock
+ * screen reaches for the authenticator on its own or waits to be asked.
+ * Without it every visit would either fire a WebAuthn prompt at people who
+ * have no passkey, or bury the fast path behind a button nobody presses.
+ *
+ * It can be wrong — a passkey deleted from the OS keychain leaves it set — so
+ * the unlock path treats "no such record" as the signal to clear it rather
+ * than trusting this flag as truth.
+ */
+const PASSKEY_HINT_KEY = "purbo:passkey";
+
+export function readPasskeyHint(): boolean {
+  try {
+    return window.localStorage.getItem(PASSKEY_HINT_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function writePasskeyHint(): void {
+  try {
+    window.localStorage.setItem(PASSKEY_HINT_KEY, "1");
+  } catch {
+    /* the hint is an optimisation; losing it only costs one extra tap */
+  }
+}
+
+export function clearPasskeyHint(): void {
+  try {
+    window.localStorage.removeItem(PASSKEY_HINT_KEY);
   } catch {
     /* nothing recoverable to do */
   }

@@ -108,6 +108,18 @@ record is sealed.
   around a key that decrypts nothing.
 - **Keys are non-extractable.** The data key is a `CryptoKey` that script can
   use but cannot read out, and intermediate key bytes are zeroed after use.
+- **A reload is not a logout, and nothing more.** A tab caches the keys it is
+  already holding so returning to it costs no second of Argon2id — but only
+  the derived data key and the auth secret, sealed under a second
+  non-extractable key, scoped to that tab by a handle in `sessionStorage`, and
+  capped by a hard expiry. The root key is never written anywhere: it survives
+  every passphrase change and cannot be rotated, so it stays in memory alone.
+  Locking deletes the record, which is what keeps auto-lock meaningful.
+- **The fast path is hardware-gated, not disk-gated.** Where other apps "keep
+  you signed in" by leaving a usable key on disk, the unattended path here is a
+  passkey: the secret that unwraps the vault never leaves the authenticator and
+  is released only after a biometric or device PIN. An attacker who copies the
+  browser profile gets a sealed record and no way to open it.
 - **The vault re-locks** after inactivity, and copied passwords are cleared
   from the clipboard after 30 seconds if nothing has overwritten them.
 - **A nonce-based CSP with `strict-dynamic`** is issued per request. Allowlist
@@ -216,7 +228,7 @@ lib/
   crypto/             Primitives, KDFs, AEAD, BIP39, generator
   auth/               Identity derivation, session tokens, passkeys
   vault/              Key hierarchy, record encryption, state machine
-  storage/            IndexedDB cache and the remote sync client
+  storage/            IndexedDB cache, tab session keys, remote sync client
   pwa/                Install-prompt state
   server/             Auth, tokens, KV driver, rate limiting, wire validation
 components/           Landing sections, vault UI, design-system primitives

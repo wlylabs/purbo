@@ -314,6 +314,25 @@ export async function keyringFromRootMaterial(material: RootMaterial): Promise<K
 }
 
 /**
+ * Rebuilds a keyring from the keys a tab cached for itself on unlock.
+ *
+ * Note what this does not take: a root key. Resuming a session needs only the
+ * ability to decrypt entries and to sign requests, so the cache holds the
+ * derived data key and the auth secret — never the master they came from.
+ * That also means this path cannot re-derive anything, which is why adding a
+ * passkey still asks for the passphrase.
+ */
+export async function keyringFromSessionKeys(
+  accountId: string,
+  dataKey: CryptoKey,
+  authSecret: Uint8Array,
+): Promise<Keyring> {
+  const identity = await identityFromSecret(authSecret);
+  if (identity.accountId !== accountId) throw new AccountMismatchError();
+  return { accountId: identity.accountId, dataKey, identity };
+}
+
+/**
  * Recovers the raw root material, for the one caller that needs it: sealing a
  * copy under a passkey. Requires the passphrase again rather than reusing the
  * unlocked session, so adding an authenticator is an explicit re-authorisation

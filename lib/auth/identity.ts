@@ -71,13 +71,22 @@ export async function accountIdFor(publicKey: Uint8Array): Promise<string> {
   return toHex(digest.slice(0, ACCOUNT_ID_BYTES));
 }
 
-/** Completes an identity from its 32-byte secret. */
+/**
+ * Completes an identity from its 32-byte secret.
+ *
+ * The identity takes its own copy rather than holding the caller's buffer.
+ * Every derivation path here ends in `wipe(authSecret)` the moment it is done
+ * with its locals — aliasing that buffer would zero the very bytes this
+ * identity signs with, leaving a keyring whose account id and public key look
+ * correct while every challenge signature it produces fails to verify.
+ */
 export async function identityFromSecret(secret: Uint8Array): Promise<AuthIdentity> {
   if (secret.length !== AUTH_SECRET_BYTES) {
     throw new Error("An auth secret must be exactly 32 bytes.");
   }
-  const publicKey = ed25519.getPublicKey(secret);
-  return { accountId: await accountIdFor(publicKey), publicKey, secret };
+  const owned = Uint8Array.from(secret);
+  const publicKey = ed25519.getPublicKey(owned);
+  return { accountId: await accountIdFor(publicKey), publicKey, secret: owned };
 }
 
 /**

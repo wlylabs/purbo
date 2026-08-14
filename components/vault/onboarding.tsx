@@ -32,7 +32,7 @@ import { cn } from "@/lib/utils";
 import { StrengthMeter } from "./strength-meter";
 
 type Route = "choose" | "create" | "restore";
-type Step = "intro" | "phrase" | "verify" | "passphrase";
+type Step = "intro" | "phrase" | "verify" | "passphrase" | "passkey";
 
 /** Below this the passphrase is too weak to be the only thing in front of the vault. */
 const MIN_PASSPHRASE_BITS = 60;
@@ -186,12 +186,13 @@ function RouteOption({
 
 /** Restoring an existing vault: the phrase proves identity and opens it. */
 function RestoreFlow({ onBack }: { onBack: () => void }) {
-  const { restoreWithPhrase } = useVault();
+  const { restoreWithPhrase, setupPending, completeSetup } = useVault();
 
   const [phrase, setPhrase] = useState("");
   const [passphrase, setPassphrase] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [busy, setBusy] = useState(false);
+  const [restored, setRestored] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const phraseValid = isValidRecoveryPhrase(phrase);
@@ -204,9 +205,11 @@ function RestoreFlow({ onBack }: { onBack: () => void }) {
     setError(null);
     try {
       await restoreWithPhrase(phrase, passphrase);
+      // The phrase has done its work; the passphrase is held a moment longer
+      // in case the next screen registers a passkey with it.
       setPhrase("");
-      setPassphrase("");
       setConfirmation("");
+      setRestored(true);
     } catch (err) {
       setError(
         err instanceof NoVaultForPhraseError
@@ -218,6 +221,18 @@ function RestoreFlow({ onBack }: { onBack: () => void }) {
       setBusy(false);
     }
   };
+
+  if (restored && setupPending) {
+    return (
+      <PasskeyOffer
+        passphrase={passphrase}
+        onDone={() => {
+          setPassphrase("");
+          completeSetup();
+        }}
+      />
+    );
+  }
 
   return (
     <Card className="p-5 sm:p-8">
@@ -303,6 +318,86 @@ function RestoreFlow({ onBack }: { onBack: () => void }) {
   );
 }
 
+/**
+ * The passkey offer, made at the only moment it is nearly free.
+ *
+ * Registering unwraps the root key, which costs the passphrase — and this is
+ * the one screen where the user has just typed it, so it need not be asked for
+ * again. Left to Settings, this is a step almost nobody takes, and the whole
+ * of "why do I keep typing a passphrase" traces back to that.
+ *
+ * Declining is a real answer and is presented as one. The passphrase and the
+ * recovery phrase both still work; a passkey is a third way in, not an upgrade
+ * that leaves the others behind.
+ */
+function PasskeyOffer({
+  passphrase,
+  onDone,
+}: {
+  passphrase: string;
+  onDone: () => void;
+}) {
+  const { addPasskey } = useVault();
+
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const enable = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await addPasskey(passphrase);
+      onDone();
+    } catch (err) {
+      if (err instanceof PasskeyCancelledError) {
+        setBusy(false);
+        return;
+      }
+      setError(
+        err instanceof Error ? err.message : "Could not register a passkey here.",
+      );
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card className="p-5 sm:p-8">
+      <div className="space-y-6">
+        <div className="space-y-3">
+          <Fingerprint className="size-6" aria-hidden />
+          <h1 className="text-display text-2xl">Open it with a touch</h1>
+          <p className="text-[0.9375rem] leading-relaxed text-ink-muted">
+            Your vault is ready. Register this device&rsquo;s biometric and coming back
+            is a fingerprint instead of a passphrase — the key is sealed inside your
+            authenticator, so only your face or PIN can release it.
+          </p>
+        </div>
+
+        <Notice tone="neutral">
+          Your passphrase and your 24 words keep working exactly as they do now. Losing
+          this device costs you nothing but convenience.
+        </Notice>
+
+        {error ? (
+          <Notice tone="critical" icon={<AlertTriangle className="size-4" />}>
+            {error}
+          </Notice>
+        ) : null}
+
+        <div className="flex gap-2">
+          <Button variant="ghost" onClick={onDone} disabled={busy}>
+            Not now
+          </Button>
+          <Button className="flex-1" loading={busy} onClick={enable}>
+            <Fingerprint className="size-4" aria-hidden />
+            Enable quick unlock
+          </Button>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 function WorkingNotice({ children }: { children: React.ReactNode }) {
   return (
     <div className="animate-fade flex items-center gap-3 rounded-[var(--radius-sm)] border border-line bg-surface px-3 py-2.5">
@@ -315,7 +410,7 @@ function WorkingNotice({ children }: { children: React.ReactNode }) {
 }
 
 function CreateFlow({ onBack }: { onBack: () => void }) {
-  const { createVault } = useVault();
+  const { createVault, setupPending, completeSetup } = useVault();
 
   const [step, setStep] = useState<Step>("intro");
   // Generated once, lazily, and held only for the duration of onboarding.
@@ -361,6 +456,10 @@ function CreateFlow({ onBack }: { onBack: () => void }) {
     setError(null);
     try {
       await createVault(phrase, passphrase);
+      // Whether this screen is ever seen is the provider's call: if a passkey
+      // cannot be registered here, the workspace has already swapped this
+      // flow out for the vault itself.
+      setStep("passkey");
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Could not create the vault. Try again.",
@@ -368,6 +467,19 @@ function CreateFlow({ onBack }: { onBack: () => void }) {
       setSubmitting(false);
     }
   };
+
+  if (step === "passkey" && setupPending) {
+    return (
+      <PasskeyOffer
+        passphrase={passphrase}
+        onDone={() => {
+          setPassphrase("");
+          setConfirmation("");
+          completeSetup();
+        }}
+      />
+    );
+  }
 
   return (
     <>
