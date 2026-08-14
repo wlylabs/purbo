@@ -55,7 +55,7 @@ export function SettingsView() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5 sm:space-y-6">
       <Card className="p-5 sm:p-6">
         <h2 className="text-[0.9375rem] font-semibold tracking-tight">Auto-lock</h2>
         <p className="mt-1 text-[0.8125rem] leading-relaxed text-ink-muted">

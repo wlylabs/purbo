@@ -21,9 +21,9 @@ export const metadata: Metadata = {
  */
 export default function OfflinePage() {
   return (
-    <main id="main" className="grid min-h-dvh place-items-center px-5 py-12">
+    <main id="main" className="grid min-h-dvh place-items-center px-5 py-10 sm:py-12">
       <div className="w-full max-w-md">
-        <Card className="p-6 text-center sm:p-8">
+        <Card className="p-5 text-center sm:p-8">
           <Wordmark className="justify-center" />
 
           <CloudOff className="mx-auto mt-6 size-6 text-ink-subtle" aria-hidden />

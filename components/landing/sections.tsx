@@ -54,15 +54,15 @@ export function HowItWorks() {
 
   return (
     <section id="how" className="border-b border-line">
-      <div className="mx-auto max-w-6xl px-5 sm:px-6 py-20 sm:py-28">
+      <div className="mx-auto max-w-6xl px-5 py-12 sm:px-6 sm:py-20 lg:py-28">
         <SectionHeader
           label="How it works"
           title="Three steps, then it disappears into the background."
         />
 
-        <ol className="mt-12 grid gap-px overflow-hidden rounded-[var(--radius-lg)] border border-line bg-line sm:grid-cols-3">
+        <ol className="mt-8 grid gap-px overflow-hidden rounded-[var(--radius-lg)] border border-line bg-line sm:mt-12 sm:grid-cols-3">
           {steps.map((step, index) => (
-            <li key={step.title} className="bg-canvas p-6 sm:p-7">
+            <li key={step.title} className="bg-canvas p-5 sm:p-7">
               <div className="flex items-center justify-between">
                 <div className="grid size-9 place-items-center rounded-[var(--radius-sm)] border border-line bg-surface">
                   <step.icon className="size-4 text-ink" aria-hidden />
@@ -71,7 +71,7 @@ export function HowItWorks() {
                   {String(index + 1).padStart(2, "0")}
                 </span>
               </div>
-              <h3 className="mt-5 text-[0.9375rem] font-semibold tracking-tight">{step.title}</h3>
+              <h3 className="mt-4 text-[0.9375rem] font-semibold tracking-tight sm:mt-5">{step.title}</h3>
               <p className="mt-2 text-[0.8125rem] leading-relaxed text-ink-muted">{step.body}</p>
             </li>
           ))}
@@ -107,24 +107,24 @@ export function Security() {
 
   return (
     <section id="security" className="border-b border-line bg-surface">
-      <div className="mx-auto max-w-6xl px-5 sm:px-6 py-20 sm:py-28">
+      <div className="mx-auto max-w-6xl px-5 py-12 sm:px-6 sm:py-20 lg:py-28">
         <SectionHeader
           label="Security"
           title="Built so that breaking the server gets you nothing."
           description="Zero-knowledge is a claim that only means something if the architecture forces it. Here is what forces it."
         />
 
-        <div className="mt-12 grid gap-px overflow-hidden rounded-[var(--radius-lg)] border border-line bg-line sm:grid-cols-2">
+        <div className="mt-8 grid gap-px overflow-hidden rounded-[var(--radius-lg)] border border-line bg-line sm:mt-12 sm:grid-cols-2">
           {guarantees.map((item) => (
-            <div key={item.title} className="bg-canvas p-6 sm:p-8">
+            <div key={item.title} className="bg-canvas p-5 sm:p-8">
               <item.icon className="size-5 text-ink" aria-hidden />
-              <h3 className="mt-5 text-[0.9375rem] font-semibold tracking-tight">{item.title}</h3>
+              <h3 className="mt-4 text-[0.9375rem] font-semibold tracking-tight sm:mt-5">{item.title}</h3>
               <p className="mt-2.5 text-[0.8125rem] leading-relaxed text-ink-muted">{item.body}</p>
             </div>
           ))}
         </div>
 
-        <div className="mt-8 rounded-[var(--radius-lg)] border border-line bg-canvas p-6 sm:p-8">
+        <div className="mt-6 rounded-[var(--radius-lg)] border border-line bg-canvas p-5 sm:mt-8 sm:p-8">
           <h3 className="text-[0.9375rem] font-semibold tracking-tight">
             The trade-off, stated plainly
           </h3>
@@ -177,14 +177,14 @@ export function Features() {
 
   return (
     <section id="features" className="border-b border-line">
-      <div className="mx-auto max-w-6xl px-5 sm:px-6 py-20 sm:py-28">
+      <div className="mx-auto max-w-6xl px-5 py-12 sm:px-6 sm:py-20 lg:py-28">
         <SectionHeader label="Features" title="Everything the daily loop needs." />
 
-        <div className="mt-12 grid gap-px overflow-hidden rounded-[var(--radius-lg)] border border-line bg-line sm:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-8 grid gap-px overflow-hidden rounded-[var(--radius-lg)] border border-line bg-line sm:mt-12 sm:grid-cols-2 lg:grid-cols-3">
           {features.map((feature) => (
-            <div key={feature.title} className="bg-canvas p-6 sm:p-7">
+            <div key={feature.title} className="bg-canvas p-5 sm:p-7">
               <feature.icon className="size-5 text-ink" aria-hidden />
-              <h3 className="mt-5 text-[0.9375rem] font-semibold tracking-tight">
+              <h3 className="mt-4 text-[0.9375rem] font-semibold tracking-tight sm:mt-5">
                 {feature.title}
               </h3>
               <p className="mt-2 text-[0.8125rem] leading-relaxed text-ink-muted">
@@ -228,20 +228,20 @@ export function Faq() {
 
   return (
     <section id="faq" className="border-b border-line bg-surface">
-      <div className="mx-auto max-w-6xl px-5 sm:px-6 py-20 sm:py-28">
+      <div className="mx-auto max-w-6xl px-5 py-12 sm:px-6 sm:py-20 lg:py-28">
         <SectionHeader label="FAQ" title="Questions worth asking." />
 
-        <div className="mt-12 divide-line overflow-hidden rounded-[var(--radius-lg)] border border-line bg-canvas">
+        <div className="mt-8 divide-line overflow-hidden rounded-[var(--radius-lg)] border border-line bg-canvas sm:mt-12">
           {items.map((item) => (
             <details key={item.q} className="group">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-6 py-5 text-[0.9375rem] font-medium transition-colors hover:bg-surface [&::-webkit-details-marker]:hidden">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 text-[0.9375rem] font-medium transition-colors hover:bg-surface sm:px-6 sm:py-5 [&::-webkit-details-marker]:hidden">
                 {item.q}
                 <span
                   aria-hidden
                   className="relative size-4 shrink-0 text-ink-subtle before:absolute before:left-0 before:top-1/2 before:h-px before:w-4 before:bg-current after:absolute after:left-1/2 after:top-0 after:h-4 after:w-px after:bg-current after:transition-transform group-open:after:scale-y-0"
                 />
               </summary>
-              <p className="px-6 pb-5 -mt-1 max-w-3xl text-[0.8125rem] leading-relaxed text-ink-muted">
+              <p className="px-5 pb-4 -mt-1 max-w-3xl text-[0.8125rem] leading-relaxed text-ink-muted sm:px-6 sm:pb-5">
                 {item.a}
               </p>
             </details>
@@ -255,16 +255,16 @@ export function Faq() {
 export function CallToAction({ configured }: { configured: boolean }) {
   return (
     <section className="border-b border-line">
-      <div className="mx-auto max-w-6xl px-5 sm:px-6 py-20 sm:py-28">
-        <div className="rounded-[var(--radius-lg)] border border-line bg-surface px-6 py-14 text-center sm:px-12">
+      <div className="mx-auto max-w-6xl px-5 py-12 sm:px-6 sm:py-20 lg:py-28">
+        <div className="rounded-[var(--radius-lg)] border border-line bg-surface px-5 py-10 text-center sm:px-12 sm:py-14">
           <h2 className="text-display mx-auto max-w-2xl text-[1.875rem] sm:text-[2.75rem]">
             Take your passwords off someone else&rsquo;s server.
           </h2>
-          <p className="mx-auto mt-5 max-w-lg text-[0.9375rem] leading-relaxed text-ink-muted">
+          <p className="mx-auto mt-4 max-w-lg text-[0.9375rem] leading-relaxed text-ink-muted sm:mt-5">
             Creating a vault takes about a minute. Have somewhere safe to write down 24 words
             before you start.
           </p>
-          <div className="mt-8 flex justify-center">
+          <div className="mt-6 flex justify-center sm:mt-8">
             <AuthButton configured={configured} size="lg" label="Create your wallet" />
           </div>
         </div>
