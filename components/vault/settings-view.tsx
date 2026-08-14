@@ -18,6 +18,7 @@ import { DEFAULT_KDF_PARAMS } from "@/lib/crypto/kdf";
 import { useVault } from "@/lib/vault/provider";
 import { cn } from "@/lib/utils";
 import type { PasskeySummary } from "@/lib/vault/types";
+import { StepUp } from "./step-up";
 
 /**
  * Passkeys, presented as what they are.
@@ -199,11 +200,21 @@ const AUTO_LOCK_CHOICES = [
 ];
 
 export function SettingsView() {
-  const { autoLockMinutes, setAutoLockMinutes, items, destroyVault, syncState, syncMessage } =
-    useVault();
+  const {
+    autoLockMinutes,
+    setAutoLockMinutes,
+    lockOnHidden,
+    setLockOnHidden,
+    items,
+    destroyVault,
+    syncState,
+    syncMessage,
+    stepUpVerified,
+  } = useVault();
 
   const [confirmingDestroy, setConfirmingDestroy] = useState(false);
   const [destroying, setDestroying] = useState(false);
+  const [confirmingExport, setConfirmingExport] = useState(false);
 
   /**
    * Exports the vault as plaintext JSON.
@@ -269,6 +280,26 @@ export function SettingsView() {
             With auto-lock off, the vault stays decrypted until you lock it or close the tab.
           </Notice>
         ) : null}
+
+        {/* The timer covers a vault left alone. This covers a vault left in
+            front of someone — the case where the wait never elapses because
+            the machine is being used, just not by you. */}
+        <label className="mt-5 flex cursor-pointer items-start gap-2.5 border-t border-line pt-5 text-[0.8125rem] leading-relaxed text-ink-muted">
+          <input
+            type="checkbox"
+            checked={lockOnHidden}
+            onChange={(event) => setLockOnHidden(event.target.checked)}
+            className="mt-0.5 size-4 shrink-0 accent-[var(--ink)]"
+          />
+          <span>
+            <span className="block font-medium text-ink">
+              Lock as soon as I switch away
+            </span>
+            Locks the moment this tab stops being what is on screen — another tab, another
+            app, a locked phone. Worth it on a shared or public machine; on a phone it
+            means glancing at a notification costs you an unlock.
+          </span>
+        </label>
       </Card>
 
       {/*
@@ -373,10 +404,30 @@ export function SettingsView() {
           encrypted</strong> — anyone who opens it reads your passwords. Move it somewhere
           safe or delete it as soon as you are done.
         </p>
-        <Button variant="secondary" size="sm" className="mt-4" onClick={exportVault} disabled={items.length === 0}>
-          <Download className="size-3.5" aria-hidden />
-          Export {items.length} {items.length === 1 ? "entry" : "entries"}
-        </Button>
+        {/* The largest single disclosure the app can make, so it asks. */}
+        {confirmingExport && !stepUpVerified ? (
+          <div className="mt-4">
+            <StepUp
+              action="download a plaintext copy of every entry"
+              onVerified={() => {
+                setConfirmingExport(false);
+                exportVault();
+              }}
+              onCancel={() => setConfirmingExport(false)}
+            />
+          </div>
+        ) : (
+          <Button
+            variant="secondary"
+            size="sm"
+            className="mt-4"
+            disabled={items.length === 0}
+            onClick={() => (stepUpVerified ? exportVault() : setConfirmingExport(true))}
+          >
+            <Download className="size-3.5" aria-hidden />
+            Export {items.length} {items.length === 1 ? "entry" : "entries"}
+          </Button>
+        )}
       </Card>
 
       <Card className="border-critical/30 p-5 sm:p-6">
@@ -391,7 +442,14 @@ export function SettingsView() {
         {/* The gate is only raised once the user has asked for it. Leaving a
             typed confirmation field permanently on screen trains people to
             fill it in, which is the opposite of what it is for. */}
-        {confirmingDestroy ? (
+        {confirmingDestroy && !stepUpVerified ? (
+          <div className="mt-5">
+            <StepUp
+              action="delete this vault and everything in it"
+              onCancel={() => setConfirmingDestroy(false)}
+            />
+          </div>
+        ) : confirmingDestroy ? (
           <ApprovalCard
             className="mt-5"
             title="Irreversible"

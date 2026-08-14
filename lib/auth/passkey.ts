@@ -130,6 +130,31 @@ function isCancellation(error: unknown): boolean {
 }
 
 /**
+ * Whether a WebAuthn prompt is currently up.
+ *
+ * On Android and on some desktop configurations the authenticator's sheet is
+ * a separate window, and the page behind it goes `hidden` while it is open.
+ * Anything that reacts to the page being hidden — locking, in particular —
+ * has to know the difference between "the user switched away" and "the user
+ * is looking at the prompt we asked for", or asking for a passkey becomes a
+ * way to lock yourself out mid-gesture.
+ */
+let openPrompts = 0;
+
+export function isPasskeyPromptOpen(): boolean {
+  return openPrompts > 0;
+}
+
+async function whilePrompting<T>(fn: () => Promise<T>): Promise<T> {
+  openPrompts++;
+  try {
+    return await fn();
+  } finally {
+    openPrompts--;
+  }
+}
+
+/**
  * Creates a passkey and seals the root material under its PRF secret.
  *
  * `material` is the caller's to wipe — this function reads it and does not
@@ -145,35 +170,37 @@ export async function registerPasskey(
   let credential: PublicKeyCredential;
 
   try {
-    credential = (await navigator.credentials.create({
-      publicKey: {
-        rp: { id: window.location.hostname, name: RP_NAME },
-        user: {
-          // No email, no username — there is no such thing here. The account
-          // id is already a hash, and it is all the authenticator needs to
-          // label the credential.
-          id: toArrayBuffer(fromHex(accountId)),
-          name: `purbo-${accountId.slice(0, 8)}`,
-          displayName: "Purbo vault",
+    credential = (await whilePrompting(() =>
+      navigator.credentials.create({
+        publicKey: {
+          rp: { id: window.location.hostname, name: RP_NAME },
+          user: {
+            // No email, no username — there is no such thing here. The account
+            // id is already a hash, and it is all the authenticator needs to
+            // label the credential.
+            id: toArrayBuffer(fromHex(accountId)),
+            name: `purbo-${accountId.slice(0, 8)}`,
+            displayName: "Purbo vault",
+          },
+          challenge: toArrayBuffer(randomBytes(32)),
+          // Ed25519, ES256, RS256 — the algorithm is irrelevant to us since no
+          // assertion is ever verified, but the field is required.
+          pubKeyCredParams: [
+            { type: "public-key", alg: -8 },
+            { type: "public-key", alg: -7 },
+            { type: "public-key", alg: -257 },
+          ],
+          authenticatorSelection: {
+            // Discoverable, so a fresh device can offer the passkey without
+            // being told which account to look for.
+            residentKey: "required",
+            requireResidentKey: true,
+            userVerification: "required",
+          },
+          extensions: { prf: { eval: { first: toArrayBuffer(salt) } } },
         },
-        challenge: toArrayBuffer(randomBytes(32)),
-        // Ed25519, ES256, RS256 — the algorithm is irrelevant to us since no
-        // assertion is ever verified, but the field is required.
-        pubKeyCredParams: [
-          { type: "public-key", alg: -8 },
-          { type: "public-key", alg: -7 },
-          { type: "public-key", alg: -257 },
-        ],
-        authenticatorSelection: {
-          // Discoverable, so a fresh device can offer the passkey without
-          // being told which account to look for.
-          residentKey: "required",
-          requireResidentKey: true,
-          userVerification: "required",
-        },
-        extensions: { prf: { eval: { first: toArrayBuffer(salt) } } },
-      },
-    })) as PublicKeyCredential;
+      }),
+    )) as PublicKeyCredential;
   } catch (error) {
     if (isCancellation(error)) throw new PasskeyCancelledError();
     throw new PasskeyUnsupportedError();
@@ -239,15 +266,17 @@ async function assertPrf(
 ): Promise<{ credentialId: string; prf: Uint8Array }> {
   let assertion: PublicKeyCredential;
   try {
-    assertion = (await navigator.credentials.get({
-      publicKey: {
-        challenge: toArrayBuffer(randomBytes(32)),
-        rpId: window.location.hostname,
-        userVerification: "required",
-        allowCredentials: allow.map((id) => ({ type: "public-key" as const, id })),
-        extensions: { prf: { eval: { first: toArrayBuffer(salt) } } },
-      },
-    })) as PublicKeyCredential;
+    assertion = (await whilePrompting(() =>
+      navigator.credentials.get({
+        publicKey: {
+          challenge: toArrayBuffer(randomBytes(32)),
+          rpId: window.location.hostname,
+          userVerification: "required",
+          allowCredentials: allow.map((id) => ({ type: "public-key" as const, id })),
+          extensions: { prf: { eval: { first: toArrayBuffer(salt) } } },
+        },
+      }),
+    )) as PublicKeyCredential;
   } catch (error) {
     if (isCancellation(error)) throw new PasskeyCancelledError();
     throw new PasskeyUnsupportedError();

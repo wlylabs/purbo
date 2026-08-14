@@ -14,6 +14,7 @@ import { identityFromRecoveryPhrase } from "@/lib/auth/identity";
 import { clearAuthIdentity, setAuthIdentity } from "@/lib/auth/session";
 import {
   NoPasskeyRecordError,
+  isPasskeyPromptOpen,
   isPasskeySupported,
   registerPasskey,
   removeAllPasskeys,
@@ -44,6 +45,7 @@ import {
   pushRemoteVault,
 } from "@/lib/storage/remote";
 import {
+  AccountMismatchError,
   IncorrectPassphraseError,
   createKeyring,
   exportRootMaterial,
@@ -107,12 +109,29 @@ interface VaultContextValue {
   /** Revokes every passkey on the account and stops offering that path here. */
   forgetPasskeys(): Promise<void>;
 
+  /**
+   * Whether a recent confirmation is still standing.
+   *
+   * An unlocked tab is not by itself proof that the person in front of it is
+   * the owner — that was established minutes or hours ago, possibly before
+   * the laptop was left in a meeting room. Reading a stored password, taking
+   * a plaintext export, or deleting the vault asks again.
+   */
+  stepUpVerified: boolean;
+  /** Re-proves ownership with the passphrase. Throws if it does not match. */
+  verifyPassphrase(passphrase: string): Promise<void>;
+  /** Re-proves ownership with a registered passkey. */
+  verifyPasskey(): Promise<void>;
+
   saveItem(draft: VaultItemDraft, id?: string): Promise<void>;
   removeItem(id: string): Promise<void>;
   destroyVault(): Promise<void>;
 
   autoLockMinutes: number;
   setAutoLockMinutes(minutes: number): void;
+  /** Lock as soon as the tab stops being the thing on screen. */
+  lockOnHidden: boolean;
+  setLockOnHidden(value: boolean): void;
   clearError(): void;
 }
 
@@ -122,6 +141,18 @@ export type { VaultContextValue };
 
 const AUTO_LOCK_STORAGE_KEY = "purbo:auto-lock-minutes";
 const DEFAULT_AUTO_LOCK_MINUTES = 10;
+
+const LOCK_ON_HIDDEN_STORAGE_KEY = "purbo:lock-on-hidden";
+
+/**
+ * How long a step-up confirmation lasts.
+ *
+ * Long enough to read a password, copy it, and go back for the username
+ * without being asked twice; short enough that a tab left open on a desk does
+ * not stay quotable. Re-confirming costs an Argon2id derivation or a
+ * fingerprint, so this cannot be generous.
+ */
+const STEP_UP_WINDOW_MS = 2 * 60_000;
 
 /** Activity that counts as "the user is still here". */
 const ACTIVITY_EVENTS = ["mousedown", "keydown", "touchstart", "scroll"] as const;
@@ -145,6 +176,8 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
   const [autoLockMinutes, setAutoLockMinutesState] = useState(DEFAULT_AUTO_LOCK_MINUTES);
   const [passkeyHint, setPasskeyHint] = useState(false);
   const [setupPending, setSetupPending] = useState(false);
+  const [lockOnHidden, setLockOnHiddenState] = useState(false);
+  const [verifiedAt, setVerifiedAt] = useState<number | null>(null);
 
   // Key material and ciphertext live in refs, never in state: state is
   // serialised into the React tree and can end up in devtools snapshots.
@@ -166,11 +199,17 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
     const stored = window.localStorage.getItem(AUTO_LOCK_STORAGE_KEY);
     const parsed = stored ? Number(stored) : NaN;
     if (Number.isFinite(parsed) && parsed >= 0) setAutoLockMinutesState(parsed);
+    setLockOnHiddenState(window.localStorage.getItem(LOCK_ON_HIDDEN_STORAGE_KEY) === "1");
   }, []);
 
   const setAutoLockMinutes = useCallback((minutes: number) => {
     setAutoLockMinutesState(minutes);
     window.localStorage.setItem(AUTO_LOCK_STORAGE_KEY, String(minutes));
+  }, []);
+
+  const setLockOnHidden = useCallback((value: boolean) => {
+    setLockOnHiddenState(value);
+    window.localStorage.setItem(LOCK_ON_HIDDEN_STORAGE_KEY, value ? "1" : "0");
   }, []);
 
   /** Records a confirmed round-trip to the server. */
@@ -199,6 +238,7 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
     setItems([]);
     setCorrupted([]);
     setSetupPending(false);
+    setVerifiedAt(null);
     setStatus(envelopeRef.current ? "locked" : "absent");
   }, []);
 
@@ -216,6 +256,7 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
     setCorrupted([]);
     setLastSyncedAt(null);
     setSetupPending(false);
+    setVerifiedAt(null);
     setError(null);
   }, []);
 
@@ -665,6 +706,58 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
   /** Leaves the setup flow and hands the user their vault. */
   const completeSetup = useCallback(() => setSetupPending(false), []);
 
+  /**
+   * Step-up, by the passphrase.
+   *
+   * The check is a real unwrap rather than a comparison against something
+   * remembered from the last unlock: nothing about "the right passphrase" is
+   * kept in memory to compare against, and paying for the Argon2id derivation
+   * is what makes this a proof rather than a formality. The keyring it
+   * produces is discarded — the live one is already open and unaffected.
+   */
+  const verifyPassphrase = useCallback(async (passphrase: string) => {
+    const envelope = envelopeRef.current;
+    const current = keyringRef.current;
+    if (!envelope || !current) throw new Error("The vault is locked.");
+
+    const proof = await unlockWithPassphrase(current.accountId, envelope, passphrase);
+    wipe(proof.identity.secret);
+    setVerifiedAt(Date.now());
+  }, []);
+
+  /** Step-up, by an authenticator this account has registered. */
+  const verifyPasskey = useCallback(async () => {
+    const current = keyringRef.current;
+    if (!current) throw new Error("The vault is locked.");
+
+    const { accountId: confirmed, material } = await unlockWithPasskey();
+    try {
+      // A passkey belonging to some other vault proves nothing about this one.
+      if (confirmed !== current.accountId) throw new AccountMismatchError();
+      setVerifiedAt(Date.now());
+    } finally {
+      wipe(material.rootKey, material.authSecret);
+    }
+  }, []);
+
+  /**
+   * A confirmation expires on its own, without anything having to happen.
+   *
+   * Tying it to the next interaction would mean a tab nobody touched keeps
+   * its window open indefinitely, which is exactly the tab this protects
+   * against.
+   */
+  useEffect(() => {
+    if (verifiedAt === null) return;
+    const remaining = verifiedAt + STEP_UP_WINDOW_MS - Date.now();
+    if (remaining <= 0) {
+      setVerifiedAt(null);
+      return;
+    }
+    const timer = window.setTimeout(() => setVerifiedAt(null), remaining);
+    return () => window.clearTimeout(timer);
+  }, [verifiedAt]);
+
   const saveItem = useCallback(
     async (draft: VaultItemDraft, id?: string) => {
       const keyring = keyringRef.current;
@@ -762,6 +855,27 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
     };
   }, [status, autoLockMinutes, lock]);
 
+  /**
+   * Lock the moment this tab stops being what is on screen.
+   *
+   * Off by default, because it is genuinely disruptive: on a phone, glancing
+   * at the message that just arrived would lock the vault. For a shared or
+   * public machine it is the setting that matters most, so it is offered
+   * rather than assumed.
+   */
+  useEffect(() => {
+    if (!lockOnHidden || status !== "unlocked") return;
+
+    const onVisibilityChange = () => {
+      // An authenticator's sheet can hide the page. Locking then would cancel
+      // the very gesture the user is in the middle of making.
+      if (document.visibilityState === "hidden" && !isPasskeyPromptOpen()) lock();
+    };
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, [lockOnHidden, status, lock]);
+
   const value = useMemo<VaultContextValue>(
     () => ({
       status,
@@ -784,11 +898,16 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
       forgetDevice,
       addPasskey,
       forgetPasskeys,
+      stepUpVerified: verifiedAt !== null,
+      verifyPassphrase,
+      verifyPasskey,
       saveItem,
       removeItem,
       destroyVault,
       autoLockMinutes,
       setAutoLockMinutes,
+      lockOnHidden,
+      setLockOnHidden,
       clearError: () => setError(null),
     }),
     [
@@ -812,11 +931,16 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
       forgetDevice,
       addPasskey,
       forgetPasskeys,
+      verifiedAt,
+      verifyPassphrase,
+      verifyPasskey,
       saveItem,
       removeItem,
       destroyVault,
       autoLockMinutes,
       setAutoLockMinutes,
+      lockOnHidden,
+      setLockOnHidden,
     ],
   );
 

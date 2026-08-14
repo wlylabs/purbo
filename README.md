@@ -120,8 +120,16 @@ record is sealed.
   passkey: the secret that unwraps the vault never leaves the authenticator and
   is released only after a biometric or device PIN. An attacker who copies the
   browser profile gets a sealed record and no way to open it.
-- **The vault re-locks** after inactivity, and copied passwords are cleared
-  from the clipboard after 30 seconds if nothing has overwritten them.
+- **Being unlocked is not being confirmed.** Reading a stored password,
+  editing an entry, taking a plaintext export or deleting the vault re-checks
+  the passphrase or a passkey, and that confirmation lasts two minutes rather
+  than the session. It is a check against whoever is at the keyboard now, not
+  against script — anything running in an unlocked tab already has the data
+  key — which is precisely the gap between "I unlocked this at nine" and
+  "someone is reading it at four".
+- **The vault re-locks** after inactivity, optionally the moment the tab stops
+  being what is on screen, and copied passwords are cleared from the clipboard
+  after 30 seconds if nothing has overwritten them.
 - **A nonce-based CSP with `strict-dynamic`** is issued per request. Allowlist
   CSPs are routinely bypassed through JSONP endpoints on allowlisted hosts; a
   nonce leaves an injected `<script>` with nothing to guess. Paired with HSTS
