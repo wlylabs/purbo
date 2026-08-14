@@ -86,8 +86,8 @@ export function PhraseVerify({
         label="Ways to confirm your copy"
         fill
         items={[
-          { id: "type", label: "Type words", icon: Keyboard },
-          { id: "paste", label: "Paste copy", icon: ClipboardPaste },
+          { id: "type", label: "Type 3 words", icon: Keyboard },
+          { id: "paste", label: "Paste all 24", icon: ClipboardPaste },
         ]}
         value={mode}
         onChange={(next: Mode) => setMode(next)}
