@@ -141,7 +141,12 @@ export function Segmented<T extends string>({
             className={cn(
               "relative z-10 inline-flex items-center justify-center gap-2 rounded-[calc(var(--radius)-0.25rem)]",
               "px-3 py-1.5 text-[0.8125rem] font-medium transition-colors duration-200",
-              fill && "flex-1",
+              // `min-w-0` is what lets a filled strip actually divide the
+              // width. A flex item defaults to min-width:auto and refuses to
+              // shrink below its label, so on a narrow phone two long labels
+              // overflow the strip and collide with the travelling pill
+              // instead of wrapping inside their own half.
+              fill && "min-w-0 flex-1",
               selected ? "text-invert-fg" : "text-ink-muted hover:text-ink",
             )}
           >

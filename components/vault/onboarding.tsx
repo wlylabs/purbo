@@ -16,7 +16,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Input, PasswordInput, Textarea } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/input";
 import { PixelLoader } from "@/components/ui/loader";
 import { Card, Notice } from "@/components/ui/primitives";
 import {
@@ -26,24 +26,13 @@ import {
 } from "@/lib/auth/passkey";
 import { createRecoveryPhrase, isValidRecoveryPhrase } from "@/lib/crypto/mnemonic";
 import { estimateStrength } from "@/lib/crypto/password";
-import { randomInt } from "@/lib/crypto/primitives";
 import { NoVaultForPhraseError, useVault } from "@/lib/vault/provider";
 import { cn } from "@/lib/utils";
-import { StrengthMeter } from "./strength-meter";
+import { PassphraseFields, passphraseIsUsable } from "./passphrase-fields";
+import { PhraseVerify } from "./phrase-verify";
 
 type Route = "choose" | "create" | "restore";
 type Step = "intro" | "phrase" | "verify" | "passphrase" | "passkey";
-
-/** Below this the passphrase is too weak to be the only thing in front of the vault. */
-const MIN_PASSPHRASE_BITS = 60;
-const MIN_PASSPHRASE_LENGTH = 10;
-
-function passphraseIsUsable(value: string): boolean {
-  return (
-    value.length >= MIN_PASSPHRASE_LENGTH &&
-    estimateStrength(value).bits >= MIN_PASSPHRASE_BITS
-  );
-}
 
 export function Onboarding() {
   const [route, setRoute] = useState<Route>("choose");
@@ -196,7 +185,7 @@ function RestoreFlow({ onBack }: { onBack: () => void }) {
   const [error, setError] = useState<string | null>(null);
 
   const phraseValid = isValidRecoveryPhrase(phrase);
-  const passphraseValid = passphraseIsUsable(passphrase);
+  const passphraseValid = passphraseIsUsable(passphrase, estimateStrength(passphrase).bits);
   const matches = passphrase.length > 0 && passphrase === confirmation;
 
   const submit = async (event: React.FormEvent) => {
@@ -267,22 +256,12 @@ function RestoreFlow({ onBack }: { onBack: () => void }) {
             Set a passphrase for this device. It is what unlocks the vault here from now
             on, so you do not have to type 24 words every time.
           </p>
-          <PasswordInput
-            label="Passphrase"
-            value={passphrase}
-            onChange={(event) => setPassphrase(event.target.value)}
-            mono={false}
-            required
-            hint={`At least ${MIN_PASSPHRASE_LENGTH} characters and ${MIN_PASSPHRASE_BITS} bits of estimated entropy.`}
-          />
-          <StrengthMeter password={passphrase} />
-          <PasswordInput
-            label="Confirm passphrase"
-            value={confirmation}
-            onChange={(event) => setConfirmation(event.target.value)}
-            mono={false}
-            required
-            error={confirmation.length > 0 && !matches ? "Passphrases do not match." : null}
+          <PassphraseFields
+            passphrase={passphrase}
+            confirmation={confirmation}
+            onPassphrase={setPassphrase}
+            onConfirmation={setConfirmation}
+            disabled={busy}
           />
         </div>
 
@@ -426,19 +405,9 @@ function CreateFlow({ onBack }: { onBack: () => void }) {
 
   const words = useMemo(() => phrase.split(" "), [phrase]);
 
-  // Three positions the user must retype, chosen once per session.
-  const challenge = useMemo(() => {
-    const picked = new Set<number>();
-    while (picked.size < 3) picked.add(randomInt(words.length));
-    return [...picked].sort((a, b) => a - b);
-  }, [words.length]);
+  const [verified, setVerified] = useState(false);
 
-  const [answers, setAnswers] = useState<Record<number, string>>({});
-  const verified = challenge.every(
-    (index) => answers[index]?.trim().toLowerCase() === words[index],
-  );
-
-  const passphraseValid = passphraseIsUsable(passphrase);
+  const passphraseValid = passphraseIsUsable(passphrase, estimateStrength(passphrase).bits);
   const matches = passphrase.length > 0 && passphrase === confirmation;
 
   const copyPhrase = async () => {
@@ -625,37 +594,16 @@ function CreateFlow({ onBack }: { onBack: () => void }) {
             <div className="space-y-2">
               <h1 className="text-display text-2xl">Confirm the phrase</h1>
               <p className="text-[0.8125rem] leading-relaxed text-ink-muted">
-                Type the words at these positions to confirm your copy is correct.
+                Prove the copy you just made is one you can actually come back to.
               </p>
             </div>
 
-            <div className="space-y-4">
-              {challenge.map((index) => (
-                <Input
-                  key={index}
-                  label={`Word ${index + 1}`}
-                  value={answers[index] ?? ""}
-                  onChange={(event) =>
-                    setAnswers((current) => ({ ...current, [index]: event.target.value }))
-                  }
-                  autoComplete="off"
-                  autoCorrect="off"
-                  autoCapitalize="off"
-                  spellCheck={false}
-                  className="font-mono"
-                  error={
-                    answers[index] && answers[index]!.trim().toLowerCase() !== words[index]
-                      ? "Does not match."
-                      : null
-                  }
-                />
-              ))}
-            </div>
+            <PhraseVerify words={words} onVerifiedChange={setVerified} />
 
             <div className="flex gap-2">
               <Button variant="ghost" onClick={() => setStep("phrase")}>
                 <ArrowLeft className="size-4" aria-hidden />
-                Back
+                Show the words
               </Button>
               <Button className="flex-1" disabled={!verified} onClick={() => setStep("passphrase")}>
                 Continue
@@ -675,31 +623,19 @@ function CreateFlow({ onBack }: { onBack: () => void }) {
               </p>
             </div>
 
-            <div className="space-y-4">
-              <PasswordInput
-                label="Passphrase"
-                value={passphrase}
-                onChange={(event) => setPassphrase(event.target.value)}
-                mono={false}
-                required
-                hint={`At least ${MIN_PASSPHRASE_LENGTH} characters and ${MIN_PASSPHRASE_BITS} bits of estimated entropy.`}
-              />
-              <StrengthMeter password={passphrase} />
-              <PasswordInput
-                label="Confirm passphrase"
-                value={confirmation}
-                onChange={(event) => setConfirmation(event.target.value)}
-                mono={false}
-                required
-                error={
-                  confirmation.length > 0 && !matches ? "Passphrases do not match." : null
-                }
-              />
-            </div>
+            <PassphraseFields
+              passphrase={passphrase}
+              confirmation={confirmation}
+              onPassphrase={setPassphrase}
+              onConfirmation={setConfirmation}
+              disabled={submitting}
+            />
 
             <Notice tone="neutral">
-              A memorable passphrase of four or five unrelated words beats a short scramble —
-              it is easier to recall and harder to guess.
+              A memorable passphrase of five or six unrelated words beats a short scramble — it
+              is easier to recall and harder to guess. Unrelated is the load-bearing word:
+              picking them yourself is where the randomness quietly leaks out, which is what
+              the suggestion above is for.
             </Notice>
 
             {error ? (
