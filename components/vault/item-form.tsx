@@ -6,8 +6,10 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input, PasswordInput, Textarea } from "@/components/ui/input";
 import { Modal, Notice } from "@/components/ui/primitives";
+import { useVault } from "@/lib/vault/provider";
 import type { VaultItem, VaultItemDraft } from "@/lib/vault/types";
 import { Generator } from "./generator";
+import { StepUp } from "./step-up";
 import { StrengthMeter } from "./strength-meter";
 
 const EMPTY: VaultItemDraft = {
@@ -30,15 +32,26 @@ export function ItemForm({
   onClose: () => void;
   onSave: (draft: VaultItemDraft, id?: string) => Promise<void>;
 }) {
+  const { stepUpVerified } = useVault();
+
   const [draft, setDraft] = useState<VaultItemDraft>(EMPTY);
   const [showGenerator, setShowGenerator] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  /**
+   * Editing an existing entry puts its password in a field on screen, so it
+   * is the same disclosure the detail view asks about — gating one and not
+   * the other would leave the Edit button as the way around the question.
+   * Creating a new entry discloses nothing and is never gated.
+   */
+  const gated = Boolean(item) && !stepUpVerified;
+
   // Re-seed whenever the dialog opens so a previous entry's values never
-  // linger in a form the user thinks is blank.
+  // linger in a form the user thinks is blank. While gated there is nothing
+  // to seed: the entry's values stay out of the form until it is answered.
   useEffect(() => {
-    if (!open) return;
+    if (!open || gated) return;
     setDraft(
       item
         ? {
@@ -53,7 +66,7 @@ export function ItemForm({
     );
     setShowGenerator(false);
     setError(null);
-  }, [open, item]);
+  }, [open, item, gated]);
 
   const update = <K extends keyof VaultItemDraft>(key: K, value: VaultItemDraft[K]) =>
     setDraft((current) => ({ ...current, [key]: value }));
@@ -90,6 +103,9 @@ export function ItemForm({
       title={item ? "Edit entry" : "New entry"}
       description="Encrypted in this browser before it is saved."
     >
+      {gated ? (
+        <StepUp action="edit this entry, which puts its password on screen" onCancel={onClose} />
+      ) : (
       <form onSubmit={submit} className="space-y-5">
         <Input
           label="Name"
@@ -173,6 +189,7 @@ export function ItemForm({
           </Button>
         </div>
       </form>
+      )}
     </Modal>
   );
 }

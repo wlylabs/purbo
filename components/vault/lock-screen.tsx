@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertTriangle, Fingerprint, KeyRound, Lock } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { PasswordInput, Textarea } from "@/components/ui/input";
@@ -40,8 +40,14 @@ function DerivingNotice() {
 }
 
 export function LockScreen() {
-  const { unlock, unlockWithRegisteredPasskey, recoverWithPhrase, error, clearError } =
-    useVault();
+  const {
+    unlock,
+    unlockWithRegisteredPasskey,
+    recoverWithPhrase,
+    error,
+    clearError,
+    passkeyHint,
+  } = useVault();
 
   const [mode, setMode] = useState<Mode>("unlock");
   const [passphrase, setPassphrase] = useState("");
@@ -50,30 +56,60 @@ export function LockScreen() {
   const [passkeyAvailable, setPasskeyAvailable] = useState(false);
   const [passkeyBusy, setPasskeyBusy] = useState(false);
   const [passkeyError, setPasskeyError] = useState<string | null>(null);
+  /** True only for the prompt this screen opened by itself. */
+  const [autoPrompting, setAutoPrompting] = useState(false);
 
-  useEffect(() => {
-    setPasskeyAvailable(isPasskeySupported());
-  }, []);
-
-  const submitPasskey = async () => {
-    setPasskeyBusy(true);
-    setPasskeyError(null);
-    try {
-      await unlockWithRegisteredPasskey();
-    } catch (err) {
-      if (!(err instanceof PasskeyCancelledError)) {
-        setPasskeyError(
-          err instanceof NoPasskeyRecordError
-            ? "No passkey on this device is registered with a Purbo vault."
-            : err instanceof Error
-              ? err.message
-              : "Could not unlock with a passkey.",
-        );
+  /**
+   * `auto` marks the attempt nobody asked for.
+   *
+   * A dismissed prompt is an answer — "not now, let me type it" — and
+   * reporting it as a failure would put an error on screen for doing exactly
+   * what the button below offers. Only an attempt the user initiated explains
+   * itself when it goes wrong.
+   */
+  const submitPasskey = useCallback(
+    async ({ auto = false }: { auto?: boolean } = {}) => {
+      setPasskeyBusy(true);
+      setAutoPrompting(auto);
+      setPasskeyError(null);
+      try {
+        await unlockWithRegisteredPasskey();
+      } catch (err) {
+        if (!auto && !(err instanceof PasskeyCancelledError)) {
+          setPasskeyError(
+            err instanceof NoPasskeyRecordError
+              ? "No passkey on this device is registered with a Purbo vault."
+              : err instanceof Error
+                ? err.message
+                : "Could not unlock with a passkey.",
+          );
+        }
+      } finally {
+        setPasskeyBusy(false);
+        setAutoPrompting(false);
       }
-    } finally {
-      setPasskeyBusy(false);
-    }
-  };
+    },
+    [unlockWithRegisteredPasskey],
+  );
+
+  /**
+   * Reach for the authenticator on arrival, when this device has one.
+   *
+   * This is the whole of "why am I typing a passphrase again" — a returning
+   * user with a registered passkey should meet a biometric prompt, not a form.
+   * Browsers differ on whether a WebAuthn call may open without a preceding
+   * gesture; where it may not, the prompt is refused, this falls through
+   * silently, and the button below is one tap away.
+   */
+  const attempted = useRef(false);
+  useEffect(() => {
+    const supported = isPasskeySupported();
+    setPasskeyAvailable(supported);
+
+    if (!supported || !passkeyHint || attempted.current) return;
+    attempted.current = true;
+    void submitPasskey({ auto: true });
+  }, [passkeyHint, submitPasskey]);
 
   const [phrase, setPhrase] = useState("");
   const [newPassphrase, setNewPassphrase] = useState("");
@@ -155,7 +191,9 @@ export function LockScreen() {
               <div className="space-y-1.5">
                 <h1 className="text-display text-2xl">Vault locked</h1>
                 <p className="text-[0.8125rem] leading-relaxed text-ink-muted">
-                  Enter your passphrase to decrypt this vault in the browser.
+                  {autoPrompting
+                    ? "Confirm with your passkey to decrypt this vault, or use your passphrase below."
+                    : "Enter your passphrase to decrypt this vault in the browser."}
                 </p>
               </div>
             </div>
@@ -172,7 +210,7 @@ export function LockScreen() {
                   size="lg"
                   className="w-full"
                   loading={passkeyBusy}
-                  onClick={submitPasskey}
+                  onClick={() => void submitPasskey()}
                 >
                   <Fingerprint className="size-4" aria-hidden />
                   Unlock with a passkey
@@ -198,7 +236,9 @@ export function LockScreen() {
                 if (error) clearError();
               }}
               mono={false}
-              autoFocus
+              // Not while a passkey prompt is up: on a phone, focusing the
+              // field throws the keyboard over the system sheet.
+              autoFocus={!autoPrompting}
               required
               error={error}
             />

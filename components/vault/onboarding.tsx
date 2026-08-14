@@ -16,7 +16,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Input, PasswordInput, Textarea } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/input";
 import { PixelLoader } from "@/components/ui/loader";
 import { Card, Notice } from "@/components/ui/primitives";
 import {
@@ -26,24 +26,13 @@ import {
 } from "@/lib/auth/passkey";
 import { createRecoveryPhrase, isValidRecoveryPhrase } from "@/lib/crypto/mnemonic";
 import { estimateStrength } from "@/lib/crypto/password";
-import { randomInt } from "@/lib/crypto/primitives";
 import { NoVaultForPhraseError, useVault } from "@/lib/vault/provider";
 import { cn } from "@/lib/utils";
-import { StrengthMeter } from "./strength-meter";
+import { PassphraseFields, passphraseIsUsable } from "./passphrase-fields";
+import { PhraseVerify } from "./phrase-verify";
 
 type Route = "choose" | "create" | "restore";
-type Step = "intro" | "phrase" | "verify" | "passphrase";
-
-/** Below this the passphrase is too weak to be the only thing in front of the vault. */
-const MIN_PASSPHRASE_BITS = 60;
-const MIN_PASSPHRASE_LENGTH = 10;
-
-function passphraseIsUsable(value: string): boolean {
-  return (
-    value.length >= MIN_PASSPHRASE_LENGTH &&
-    estimateStrength(value).bits >= MIN_PASSPHRASE_BITS
-  );
-}
+type Step = "intro" | "phrase" | "verify" | "passphrase" | "passkey";
 
 export function Onboarding() {
   const [route, setRoute] = useState<Route>("choose");
@@ -186,16 +175,17 @@ function RouteOption({
 
 /** Restoring an existing vault: the phrase proves identity and opens it. */
 function RestoreFlow({ onBack }: { onBack: () => void }) {
-  const { restoreWithPhrase } = useVault();
+  const { restoreWithPhrase, setupPending, completeSetup } = useVault();
 
   const [phrase, setPhrase] = useState("");
   const [passphrase, setPassphrase] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [busy, setBusy] = useState(false);
+  const [restored, setRestored] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const phraseValid = isValidRecoveryPhrase(phrase);
-  const passphraseValid = passphraseIsUsable(passphrase);
+  const passphraseValid = passphraseIsUsable(passphrase, estimateStrength(passphrase).bits);
   const matches = passphrase.length > 0 && passphrase === confirmation;
 
   const submit = async (event: React.FormEvent) => {
@@ -204,9 +194,11 @@ function RestoreFlow({ onBack }: { onBack: () => void }) {
     setError(null);
     try {
       await restoreWithPhrase(phrase, passphrase);
+      // The phrase has done its work; the passphrase is held a moment longer
+      // in case the next screen registers a passkey with it.
       setPhrase("");
-      setPassphrase("");
       setConfirmation("");
+      setRestored(true);
     } catch (err) {
       setError(
         err instanceof NoVaultForPhraseError
@@ -218,6 +210,18 @@ function RestoreFlow({ onBack }: { onBack: () => void }) {
       setBusy(false);
     }
   };
+
+  if (restored && setupPending) {
+    return (
+      <PasskeyOffer
+        passphrase={passphrase}
+        onDone={() => {
+          setPassphrase("");
+          completeSetup();
+        }}
+      />
+    );
+  }
 
   return (
     <Card className="p-5 sm:p-8">
@@ -252,22 +256,12 @@ function RestoreFlow({ onBack }: { onBack: () => void }) {
             Set a passphrase for this device. It is what unlocks the vault here from now
             on, so you do not have to type 24 words every time.
           </p>
-          <PasswordInput
-            label="Passphrase"
-            value={passphrase}
-            onChange={(event) => setPassphrase(event.target.value)}
-            mono={false}
-            required
-            hint={`At least ${MIN_PASSPHRASE_LENGTH} characters and ${MIN_PASSPHRASE_BITS} bits of estimated entropy.`}
-          />
-          <StrengthMeter password={passphrase} />
-          <PasswordInput
-            label="Confirm passphrase"
-            value={confirmation}
-            onChange={(event) => setConfirmation(event.target.value)}
-            mono={false}
-            required
-            error={confirmation.length > 0 && !matches ? "Passphrases do not match." : null}
+          <PassphraseFields
+            passphrase={passphrase}
+            confirmation={confirmation}
+            onPassphrase={setPassphrase}
+            onConfirmation={setConfirmation}
+            disabled={busy}
           />
         </div>
 
@@ -303,6 +297,86 @@ function RestoreFlow({ onBack }: { onBack: () => void }) {
   );
 }
 
+/**
+ * The passkey offer, made at the only moment it is nearly free.
+ *
+ * Registering unwraps the root key, which costs the passphrase — and this is
+ * the one screen where the user has just typed it, so it need not be asked for
+ * again. Left to Settings, this is a step almost nobody takes, and the whole
+ * of "why do I keep typing a passphrase" traces back to that.
+ *
+ * Declining is a real answer and is presented as one. The passphrase and the
+ * recovery phrase both still work; a passkey is a third way in, not an upgrade
+ * that leaves the others behind.
+ */
+function PasskeyOffer({
+  passphrase,
+  onDone,
+}: {
+  passphrase: string;
+  onDone: () => void;
+}) {
+  const { addPasskey } = useVault();
+
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const enable = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await addPasskey(passphrase);
+      onDone();
+    } catch (err) {
+      if (err instanceof PasskeyCancelledError) {
+        setBusy(false);
+        return;
+      }
+      setError(
+        err instanceof Error ? err.message : "Could not register a passkey here.",
+      );
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card className="p-5 sm:p-8">
+      <div className="space-y-6">
+        <div className="space-y-3">
+          <Fingerprint className="size-6" aria-hidden />
+          <h1 className="text-display text-2xl">Open it with a touch</h1>
+          <p className="text-[0.9375rem] leading-relaxed text-ink-muted">
+            Your vault is ready. Register this device&rsquo;s biometric and coming back
+            is a fingerprint instead of a passphrase — the key is sealed inside your
+            authenticator, so only your face or PIN can release it.
+          </p>
+        </div>
+
+        <Notice tone="neutral">
+          Your passphrase and your 24 words keep working exactly as they do now. Losing
+          this device costs you nothing but convenience.
+        </Notice>
+
+        {error ? (
+          <Notice tone="critical" icon={<AlertTriangle className="size-4" />}>
+            {error}
+          </Notice>
+        ) : null}
+
+        <div className="flex gap-2">
+          <Button variant="ghost" onClick={onDone} disabled={busy}>
+            Not now
+          </Button>
+          <Button className="flex-1" loading={busy} onClick={enable}>
+            <Fingerprint className="size-4" aria-hidden />
+            Enable quick unlock
+          </Button>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 function WorkingNotice({ children }: { children: React.ReactNode }) {
   return (
     <div className="animate-fade flex items-center gap-3 rounded-[var(--radius-sm)] border border-line bg-surface px-3 py-2.5">
@@ -315,7 +389,7 @@ function WorkingNotice({ children }: { children: React.ReactNode }) {
 }
 
 function CreateFlow({ onBack }: { onBack: () => void }) {
-  const { createVault } = useVault();
+  const { createVault, setupPending, completeSetup } = useVault();
 
   const [step, setStep] = useState<Step>("intro");
   // Generated once, lazily, and held only for the duration of onboarding.
@@ -331,19 +405,9 @@ function CreateFlow({ onBack }: { onBack: () => void }) {
 
   const words = useMemo(() => phrase.split(" "), [phrase]);
 
-  // Three positions the user must retype, chosen once per session.
-  const challenge = useMemo(() => {
-    const picked = new Set<number>();
-    while (picked.size < 3) picked.add(randomInt(words.length));
-    return [...picked].sort((a, b) => a - b);
-  }, [words.length]);
+  const [verified, setVerified] = useState(false);
 
-  const [answers, setAnswers] = useState<Record<number, string>>({});
-  const verified = challenge.every(
-    (index) => answers[index]?.trim().toLowerCase() === words[index],
-  );
-
-  const passphraseValid = passphraseIsUsable(passphrase);
+  const passphraseValid = passphraseIsUsable(passphrase, estimateStrength(passphrase).bits);
   const matches = passphrase.length > 0 && passphrase === confirmation;
 
   const copyPhrase = async () => {
@@ -361,6 +425,10 @@ function CreateFlow({ onBack }: { onBack: () => void }) {
     setError(null);
     try {
       await createVault(phrase, passphrase);
+      // Whether this screen is ever seen is the provider's call: if a passkey
+      // cannot be registered here, the workspace has already swapped this
+      // flow out for the vault itself.
+      setStep("passkey");
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Could not create the vault. Try again.",
@@ -368,6 +436,19 @@ function CreateFlow({ onBack }: { onBack: () => void }) {
       setSubmitting(false);
     }
   };
+
+  if (step === "passkey" && setupPending) {
+    return (
+      <PasskeyOffer
+        passphrase={passphrase}
+        onDone={() => {
+          setPassphrase("");
+          setConfirmation("");
+          completeSetup();
+        }}
+      />
+    );
+  }
 
   return (
     <>
@@ -513,37 +594,16 @@ function CreateFlow({ onBack }: { onBack: () => void }) {
             <div className="space-y-2">
               <h1 className="text-display text-2xl">Confirm the phrase</h1>
               <p className="text-[0.8125rem] leading-relaxed text-ink-muted">
-                Type the words at these positions to confirm your copy is correct.
+                Prove the copy you just made is one you can actually come back to.
               </p>
             </div>
 
-            <div className="space-y-4">
-              {challenge.map((index) => (
-                <Input
-                  key={index}
-                  label={`Word ${index + 1}`}
-                  value={answers[index] ?? ""}
-                  onChange={(event) =>
-                    setAnswers((current) => ({ ...current, [index]: event.target.value }))
-                  }
-                  autoComplete="off"
-                  autoCorrect="off"
-                  autoCapitalize="off"
-                  spellCheck={false}
-                  className="font-mono"
-                  error={
-                    answers[index] && answers[index]!.trim().toLowerCase() !== words[index]
-                      ? "Does not match."
-                      : null
-                  }
-                />
-              ))}
-            </div>
+            <PhraseVerify words={words} onVerifiedChange={setVerified} />
 
             <div className="flex gap-2">
               <Button variant="ghost" onClick={() => setStep("phrase")}>
                 <ArrowLeft className="size-4" aria-hidden />
-                Back
+                Show the words
               </Button>
               <Button className="flex-1" disabled={!verified} onClick={() => setStep("passphrase")}>
                 Continue
@@ -563,31 +623,19 @@ function CreateFlow({ onBack }: { onBack: () => void }) {
               </p>
             </div>
 
-            <div className="space-y-4">
-              <PasswordInput
-                label="Passphrase"
-                value={passphrase}
-                onChange={(event) => setPassphrase(event.target.value)}
-                mono={false}
-                required
-                hint={`At least ${MIN_PASSPHRASE_LENGTH} characters and ${MIN_PASSPHRASE_BITS} bits of estimated entropy.`}
-              />
-              <StrengthMeter password={passphrase} />
-              <PasswordInput
-                label="Confirm passphrase"
-                value={confirmation}
-                onChange={(event) => setConfirmation(event.target.value)}
-                mono={false}
-                required
-                error={
-                  confirmation.length > 0 && !matches ? "Passphrases do not match." : null
-                }
-              />
-            </div>
+            <PassphraseFields
+              passphrase={passphrase}
+              confirmation={confirmation}
+              onPassphrase={setPassphrase}
+              onConfirmation={setConfirmation}
+              disabled={submitting}
+            />
 
             <Notice tone="neutral">
-              A memorable passphrase of four or five unrelated words beats a short scramble —
-              it is easier to recall and harder to guess.
+              A memorable passphrase of five or six unrelated words beats a short scramble — it
+              is easier to recall and harder to guess. Unrelated is the load-bearing word:
+              picking them yourself is where the randomness quietly leaks out, which is what
+              the suggestion above is for.
             </Notice>
 
             {error ? (

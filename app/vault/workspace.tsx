@@ -18,7 +18,17 @@ import { useVault } from "@/lib/vault/provider";
  * can answer locally — is there a vault on this device?
  */
 export function VaultWorkspace() {
-  const { status } = useVault();
+  const { status, setupPending } = useVault();
+
+  /**
+   * A vault that is open but not yet handed over.
+   *
+   * Creating a vault unlocks it, so without this the setup flow would be
+   * swapped for the dashboard the instant the keys exist — taking the passkey
+   * offer with it, at the one moment the passphrase needed to accept it is
+   * still in hand.
+   */
+  const finishingSetup = status === "unlocked" && setupPending;
 
   if (status === "loading") {
     return (
@@ -38,9 +48,9 @@ export function VaultWorkspace() {
     <div className="flex min-h-dvh flex-col">
       <AppHeader />
       <main id="main" className="flex flex-1 flex-col">
-        {status === "absent" ? <Onboarding /> : null}
+        {status === "absent" || finishingSetup ? <Onboarding /> : null}
         {status === "locked" ? <LockScreen /> : null}
-        {status === "unlocked" ? <Dashboard /> : null}
+        {status === "unlocked" && !finishingSetup ? <Dashboard /> : null}
       </main>
     </div>
   );

@@ -13,18 +13,30 @@ import {
 import { identityFromRecoveryPhrase } from "@/lib/auth/identity";
 import { clearAuthIdentity, setAuthIdentity } from "@/lib/auth/session";
 import {
+  NoPasskeyRecordError,
+  isPasskeyPromptOpen,
+  isPasskeySupported,
   registerPasskey,
+  removeAllPasskeys,
   unlockWithPasskey,
 } from "@/lib/auth/passkey";
 import { wipe } from "@/lib/crypto/primitives";
 import {
   clearActiveAccount,
   clearLocalVault,
+  clearPasskeyHint,
   readActiveAccount,
   readLocalVault,
+  readPasskeyHint,
   writeActiveAccount,
   writeLocalVault,
+  writePasskeyHint,
 } from "@/lib/storage/local";
+import {
+  clearSessionKeys,
+  loadSessionKeys,
+  saveSessionKeys,
+} from "@/lib/storage/session-keys";
 import {
   RemoteUnavailableError,
   RevisionConflictError,
@@ -33,14 +45,17 @@ import {
   pushRemoteVault,
 } from "@/lib/storage/remote";
 import {
+  AccountMismatchError,
   IncorrectPassphraseError,
   createKeyring,
   exportRootMaterial,
   keyringFromRootMaterial,
+  keyringFromSessionKeys,
   rewrapWithNewPassphrase,
   unlockWithPassphrase,
   unlockWithRecoveryPhrase,
   type Keyring,
+  type RootMaterial,
 } from "./keyring";
 import { applyDraft, decryptAll, draftToItem, encryptItem } from "./records";
 import type {
@@ -66,6 +81,18 @@ interface VaultContextValue {
   corrupted: string[];
   /** The account this device is holding, once one is known. */
   accountId: string | null;
+  /**
+   * Whether this device has a passkey to reach for. Drives the lock screen's
+   * decision to ask the authenticator on its own rather than waiting.
+   */
+  passkeyHint: boolean;
+  /**
+   * Set while a freshly created or restored vault still has an onboarding
+   * step to finish. The vault is open and usable underneath; this only keeps
+   * the setup flow on screen long enough to offer a passkey.
+   */
+  setupPending: boolean;
+  completeSetup(): void;
 
   createVault(recoveryPhrase: string, passphrase: string): Promise<void>;
   /** First open on a device that has never held this vault. */
@@ -79,6 +106,22 @@ interface VaultContextValue {
   forgetDevice(): Promise<void>;
 
   addPasskey(passphrase: string): Promise<void>;
+  /** Revokes every passkey on the account and stops offering that path here. */
+  forgetPasskeys(): Promise<void>;
+
+  /**
+   * Whether a recent confirmation is still standing.
+   *
+   * An unlocked tab is not by itself proof that the person in front of it is
+   * the owner — that was established minutes or hours ago, possibly before
+   * the laptop was left in a meeting room. Reading a stored password, taking
+   * a plaintext export, or deleting the vault asks again.
+   */
+  stepUpVerified: boolean;
+  /** Re-proves ownership with the passphrase. Throws if it does not match. */
+  verifyPassphrase(passphrase: string): Promise<void>;
+  /** Re-proves ownership with a registered passkey. */
+  verifyPasskey(): Promise<void>;
 
   saveItem(draft: VaultItemDraft, id?: string): Promise<void>;
   removeItem(id: string): Promise<void>;
@@ -86,6 +129,9 @@ interface VaultContextValue {
 
   autoLockMinutes: number;
   setAutoLockMinutes(minutes: number): void;
+  /** Lock as soon as the tab stops being the thing on screen. */
+  lockOnHidden: boolean;
+  setLockOnHidden(value: boolean): void;
   clearError(): void;
 }
 
@@ -95,6 +141,18 @@ export type { VaultContextValue };
 
 const AUTO_LOCK_STORAGE_KEY = "purbo:auto-lock-minutes";
 const DEFAULT_AUTO_LOCK_MINUTES = 10;
+
+const LOCK_ON_HIDDEN_STORAGE_KEY = "purbo:lock-on-hidden";
+
+/**
+ * How long a step-up confirmation lasts.
+ *
+ * Long enough to read a password, copy it, and go back for the username
+ * without being asked twice; short enough that a tab left open on a desk does
+ * not stay quotable. Re-confirming costs an Argon2id derivation or a
+ * fingerprint, so this cannot be generous.
+ */
+const STEP_UP_WINDOW_MS = 2 * 60_000;
 
 /** Activity that counts as "the user is still here". */
 const ACTIVITY_EVENTS = ["mousedown", "keydown", "touchstart", "scroll"] as const;
@@ -116,6 +174,10 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
   const [corrupted, setCorrupted] = useState<string[]>([]);
   const [accountId, setAccountId] = useState<string | null>(null);
   const [autoLockMinutes, setAutoLockMinutesState] = useState(DEFAULT_AUTO_LOCK_MINUTES);
+  const [passkeyHint, setPasskeyHint] = useState(false);
+  const [setupPending, setSetupPending] = useState(false);
+  const [lockOnHidden, setLockOnHiddenState] = useState(false);
+  const [verifiedAt, setVerifiedAt] = useState<number | null>(null);
 
   // Key material and ciphertext live in refs, never in state: state is
   // serialised into the React tree and can end up in devtools snapshots.
@@ -123,16 +185,31 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
   const envelopeRef = useRef<KeyEnvelope | null>(null);
   const encryptedRef = useRef<EncryptedItem[]>([]);
   const revisionRef = useRef(0);
+  /**
+   * The in-flight write of this tab's session cache.
+   *
+   * Caching happens in the background so unlocking is not held up by it, which
+   * leaves one ordering that matters: locking immediately after unlocking must
+   * not delete the record before the write lands and then leave it behind.
+   * Locking chains onto this instead of racing it.
+   */
+  const sessionWriteRef = useRef<Promise<void>>(Promise.resolve());
 
   useEffect(() => {
     const stored = window.localStorage.getItem(AUTO_LOCK_STORAGE_KEY);
     const parsed = stored ? Number(stored) : NaN;
     if (Number.isFinite(parsed) && parsed >= 0) setAutoLockMinutesState(parsed);
+    setLockOnHiddenState(window.localStorage.getItem(LOCK_ON_HIDDEN_STORAGE_KEY) === "1");
   }, []);
 
   const setAutoLockMinutes = useCallback((minutes: number) => {
     setAutoLockMinutesState(minutes);
     window.localStorage.setItem(AUTO_LOCK_STORAGE_KEY, String(minutes));
+  }, []);
+
+  const setLockOnHidden = useCallback((value: boolean) => {
+    setLockOnHiddenState(value);
+    window.localStorage.setItem(LOCK_ON_HIDDEN_STORAGE_KEY, value ? "1" : "0");
   }, []);
 
   /** Records a confirmed round-trip to the server. */
@@ -153,8 +230,15 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
   const lock = useCallback(() => {
     keyringRef.current = null;
     clearAuthIdentity();
+    // The cached copy goes with it, or auto-lock would be theatre: a locked
+    // tab whose keys are still sitting in storage is not locked.
+    sessionWriteRef.current = sessionWriteRef.current
+      .catch(() => undefined)
+      .then(clearSessionKeys);
     setItems([]);
     setCorrupted([]);
+    setSetupPending(false);
+    setVerifiedAt(null);
     setStatus(envelopeRef.current ? "locked" : "absent");
   }, []);
 
@@ -162,56 +246,18 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
   const reset = useCallback(() => {
     keyringRef.current = null;
     clearAuthIdentity();
+    sessionWriteRef.current = sessionWriteRef.current
+      .catch(() => undefined)
+      .then(clearSessionKeys);
     envelopeRef.current = null;
     encryptedRef.current = [];
     revisionRef.current = 0;
     setItems([]);
     setCorrupted([]);
     setLastSyncedAt(null);
+    setSetupPending(false);
+    setVerifiedAt(null);
     setError(null);
-  }, []);
-
-  /**
-   * What this browser knows before anyone has proved anything.
-   *
-   * There is no session to restore on load: with identity derived from the
-   * recovery phrase, the server cannot tell us who we are — only the user
-   * can, by unlocking. So startup is a purely local question: is there a
-   * cached vault here, or is this a fresh start?
-   */
-  useEffect(() => {
-    let cancelled = false;
-
-    const boot = async () => {
-      const stored = readActiveAccount();
-      if (!stored) {
-        if (!cancelled) setStatus("absent");
-        return;
-      }
-
-      const local = await readLocalVault(stored);
-      if (cancelled) return;
-
-      if (!local) {
-        // The pointer outlived the cache — a cleared site storage, or a
-        // partial eviction. Nothing here can be unlocked, so this device is
-        // back to needing the recovery phrase.
-        clearActiveAccount();
-        setStatus("absent");
-        return;
-      }
-
-      envelopeRef.current = local.envelope;
-      encryptedRef.current = local.items;
-      revisionRef.current = local.revision;
-      setAccountId(stored);
-      setStatus("locked");
-    };
-
-    void boot();
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   const decryptInto = useCallback(async (keyring: Keyring) => {
@@ -333,7 +379,117 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
     setAuthIdentity(keyring.identity);
     setAccountId(keyring.accountId);
     writeActiveAccount(keyring.accountId);
+
+    // Hand the tab what it needs to come back from a reload without a second
+    // of Argon2id. A copy of the secret, because the identity's own buffer is
+    // wiped the moment the vault locks and this write is asynchronous.
+    const authSecret = Uint8Array.from(keyring.identity.secret);
+    sessionWriteRef.current = sessionWriteRef.current
+      .catch(() => undefined)
+      .then(() =>
+        saveSessionKeys({
+          accountId: keyring.accountId,
+          dataKey: keyring.dataKey,
+          authSecret,
+        }).finally(() => wipe(authSecret)),
+      );
   }, []);
+
+  /**
+   * What this browser knows before anyone has proved anything.
+   *
+   * Three questions, in order. Is this tab resuming — a reload, a followed
+   * link, a return from the OS — in which case its keys are still cached and
+   * there is nothing to ask for. Failing that, is there an encrypted vault on
+   * this device to unlock. Failing that, this is a fresh start.
+   *
+   * None of them involve the server. With identity derived from the recovery
+   * phrase there is no session for it to restore: it cannot tell us who we
+   * are, only the user can, by unlocking.
+   */
+  useEffect(() => {
+    let cancelled = false;
+
+    const resume = async (): Promise<boolean> => {
+      const cached = await loadSessionKeys();
+      if (!cached) return false;
+
+      try {
+        if (cancelled) return false;
+
+        const local = await readLocalVault(cached.accountId);
+        if (cancelled) return false;
+        if (!local) {
+          // Keys for a vault this device no longer holds — a sign-out in
+          // another tab, or an evicted cache. They open nothing.
+          await clearSessionKeys();
+          return false;
+        }
+
+        const keyring = await keyringFromSessionKeys(
+          cached.accountId,
+          cached.dataKey,
+          cached.authSecret,
+        );
+        if (cancelled) return false;
+
+        adoptKeyring(keyring);
+        envelopeRef.current = local.envelope;
+        encryptedRef.current = local.items;
+        revisionRef.current = local.revision;
+        await decryptInto(keyring);
+        setStatus("unlocked");
+        void syncAfterUnlock(keyring);
+        return true;
+      } catch {
+        // Half-adopted is worse than not adopted: leave nothing behind for
+        // the lock screen to inherit.
+        keyringRef.current = null;
+        clearAuthIdentity();
+        await clearSessionKeys();
+        return false;
+      } finally {
+        // The keyring holds its own copy; this one has served its purpose.
+        wipe(cached.authSecret);
+      }
+    };
+
+    const boot = async () => {
+      setPasskeyHint(readPasskeyHint());
+
+      if (await resume()) return;
+      if (cancelled) return;
+
+      const stored = readActiveAccount();
+      if (!stored) {
+        setStatus("absent");
+        return;
+      }
+
+      const local = await readLocalVault(stored);
+      if (cancelled) return;
+
+      if (!local) {
+        // The pointer outlived the cache — a cleared site storage, or a
+        // partial eviction. Nothing here can be unlocked, so this device is
+        // back to needing the recovery phrase.
+        clearActiveAccount();
+        setStatus("absent");
+        return;
+      }
+
+      envelopeRef.current = local.envelope;
+      encryptedRef.current = local.items;
+      revisionRef.current = local.revision;
+      setAccountId(stored);
+      setStatus("locked");
+    };
+
+    void boot();
+    return () => {
+      cancelled = true;
+    };
+  }, [adoptKeyring, decryptInto, syncAfterUnlock]);
 
   const createVault = useCallback(
     async (recoveryPhrase: string, passphrase: string) => {
@@ -345,6 +501,9 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
       encryptedRef.current = [];
       revisionRef.current = 0;
       setItems([]);
+      // Offered here rather than left to Settings: registering costs the
+      // passphrase, and this is the one moment the user has just typed it.
+      setSetupPending(isPasskeySupported() && !readPasskeyHint());
       setStatus("unlocked");
 
       await persist([]);
@@ -384,6 +543,7 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
       encryptedRef.current = remote.items;
       revisionRef.current = remote.revision;
       await decryptInto(keyring);
+      setSetupPending(isPasskeySupported() && !readPasskeyHint());
       setStatus("unlocked");
 
       await persist(remote.items);
@@ -425,7 +585,19 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
    */
   const unlockWithRegisteredPasskey = useCallback(async () => {
     setError(null);
-    const { material } = await unlockWithPasskey();
+
+    let material: RootMaterial;
+    try {
+      ({ material } = await unlockWithPasskey());
+    } catch (err) {
+      if (err instanceof NoPasskeyRecordError) {
+        // The hint was stale — a passkey deleted from the OS keychain, or a
+        // vault removed from the server. Stop reaching for it on every visit.
+        clearPasskeyHint();
+        setPasskeyHint(false);
+      }
+      throw err;
+    }
 
     try {
       const keyring = await keyringFromRootMaterial(material);
@@ -456,10 +628,14 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
       await decryptInto(keyring);
       setStatus("unlocked");
       markSynced();
+
+      // Confirmed working, so the next visit can reach for it unprompted.
+      writePasskeyHint();
+      setPasskeyHint(true);
     } finally {
-      // The root key was only needed to build the keyring; the identity's
-      // secret is now owned by the session layer.
-      wipe(material.rootKey);
+      // Both were only needed to build the keyring, which holds its own copy
+      // of the identity. Nothing downstream reads this material again.
+      wipe(material.rootKey, material.authSecret);
     }
   }, [adoptKeyring, decryptInto, markSynced]);
 
@@ -505,12 +681,82 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
       const material = await exportRootMaterial(keyring.accountId, envelope, passphrase);
       try {
         await registerPasskey(keyring.accountId, material);
+        writePasskeyHint();
+        setPasskeyHint(true);
       } finally {
         wipe(material.rootKey, material.authSecret);
       }
     },
     [],
   );
+
+  /**
+   * Revokes every passkey on the account.
+   *
+   * The hint goes with them. Leaving it set would have the lock screen open a
+   * biometric prompt on the next visit for credentials the server no longer
+   * has a sealed record for.
+   */
+  const forgetPasskeys = useCallback(async () => {
+    await removeAllPasskeys();
+    clearPasskeyHint();
+    setPasskeyHint(false);
+  }, []);
+
+  /** Leaves the setup flow and hands the user their vault. */
+  const completeSetup = useCallback(() => setSetupPending(false), []);
+
+  /**
+   * Step-up, by the passphrase.
+   *
+   * The check is a real unwrap rather than a comparison against something
+   * remembered from the last unlock: nothing about "the right passphrase" is
+   * kept in memory to compare against, and paying for the Argon2id derivation
+   * is what makes this a proof rather than a formality. The keyring it
+   * produces is discarded — the live one is already open and unaffected.
+   */
+  const verifyPassphrase = useCallback(async (passphrase: string) => {
+    const envelope = envelopeRef.current;
+    const current = keyringRef.current;
+    if (!envelope || !current) throw new Error("The vault is locked.");
+
+    const proof = await unlockWithPassphrase(current.accountId, envelope, passphrase);
+    wipe(proof.identity.secret);
+    setVerifiedAt(Date.now());
+  }, []);
+
+  /** Step-up, by an authenticator this account has registered. */
+  const verifyPasskey = useCallback(async () => {
+    const current = keyringRef.current;
+    if (!current) throw new Error("The vault is locked.");
+
+    const { accountId: confirmed, material } = await unlockWithPasskey();
+    try {
+      // A passkey belonging to some other vault proves nothing about this one.
+      if (confirmed !== current.accountId) throw new AccountMismatchError();
+      setVerifiedAt(Date.now());
+    } finally {
+      wipe(material.rootKey, material.authSecret);
+    }
+  }, []);
+
+  /**
+   * A confirmation expires on its own, without anything having to happen.
+   *
+   * Tying it to the next interaction would mean a tab nobody touched keeps
+   * its window open indefinitely, which is exactly the tab this protects
+   * against.
+   */
+  useEffect(() => {
+    if (verifiedAt === null) return;
+    const remaining = verifiedAt + STEP_UP_WINDOW_MS - Date.now();
+    if (remaining <= 0) {
+      setVerifiedAt(null);
+      return;
+    }
+    const timer = window.setTimeout(() => setVerifiedAt(null), remaining);
+    return () => window.clearTimeout(timer);
+  }, [verifiedAt]);
 
   const saveItem = useCallback(
     async (draft: VaultItemDraft, id?: string) => {
@@ -558,6 +804,8 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
     }
     await clearLocalVault(current);
     clearActiveAccount();
+    clearPasskeyHint();
+    setPasskeyHint(false);
     reset();
     setAccountId(null);
     setStatus("absent");
@@ -575,6 +823,8 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
     const current = keyringRef.current?.accountId ?? accountId;
     if (current) await clearLocalVault(current);
     clearActiveAccount();
+    clearPasskeyHint();
+    setPasskeyHint(false);
     reset();
     setAccountId(null);
     setStatus("absent");
@@ -605,6 +855,27 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
     };
   }, [status, autoLockMinutes, lock]);
 
+  /**
+   * Lock the moment this tab stops being what is on screen.
+   *
+   * Off by default, because it is genuinely disruptive: on a phone, glancing
+   * at the message that just arrived would lock the vault. For a shared or
+   * public machine it is the setting that matters most, so it is offered
+   * rather than assumed.
+   */
+  useEffect(() => {
+    if (!lockOnHidden || status !== "unlocked") return;
+
+    const onVisibilityChange = () => {
+      // An authenticator's sheet can hide the page. Locking then would cancel
+      // the very gesture the user is in the middle of making.
+      if (document.visibilityState === "hidden" && !isPasskeyPromptOpen()) lock();
+    };
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, [lockOnHidden, status, lock]);
+
   const value = useMemo<VaultContextValue>(
     () => ({
       status,
@@ -615,6 +886,9 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
       lastSyncedAt,
       corrupted,
       accountId,
+      passkeyHint,
+      setupPending,
+      completeSetup,
       createVault,
       restoreWithPhrase,
       unlock,
@@ -623,11 +897,17 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
       lock,
       forgetDevice,
       addPasskey,
+      forgetPasskeys,
+      stepUpVerified: verifiedAt !== null,
+      verifyPassphrase,
+      verifyPasskey,
       saveItem,
       removeItem,
       destroyVault,
       autoLockMinutes,
       setAutoLockMinutes,
+      lockOnHidden,
+      setLockOnHidden,
       clearError: () => setError(null),
     }),
     [
@@ -639,6 +919,9 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
       lastSyncedAt,
       corrupted,
       accountId,
+      passkeyHint,
+      setupPending,
+      completeSetup,
       createVault,
       restoreWithPhrase,
       unlock,
@@ -647,11 +930,17 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
       lock,
       forgetDevice,
       addPasskey,
+      forgetPasskeys,
+      verifiedAt,
+      verifyPassphrase,
+      verifyPasskey,
       saveItem,
       removeItem,
       destroyVault,
       autoLockMinutes,
       setAutoLockMinutes,
+      lockOnHidden,
+      setLockOnHidden,
     ],
   );
 
