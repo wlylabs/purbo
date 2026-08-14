@@ -8,28 +8,313 @@ import {
   Copy,
   Eye,
   EyeOff,
+  Fingerprint,
+  KeyRound,
   ShieldCheck,
+  Sparkles,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Input, PasswordInput } from "@/components/ui/input";
+import { Input, PasswordInput, Textarea } from "@/components/ui/input";
 import { PixelLoader } from "@/components/ui/loader";
 import { Card, Notice } from "@/components/ui/primitives";
-import { createRecoveryPhrase } from "@/lib/crypto/mnemonic";
+import {
+  NoPasskeyRecordError,
+  PasskeyCancelledError,
+  isPasskeySupported,
+} from "@/lib/auth/passkey";
+import { createRecoveryPhrase, isValidRecoveryPhrase } from "@/lib/crypto/mnemonic";
 import { estimateStrength } from "@/lib/crypto/password";
 import { randomInt } from "@/lib/crypto/primitives";
-import { useVault } from "@/lib/vault/provider";
+import { NoVaultForPhraseError, useVault } from "@/lib/vault/provider";
 import { cn } from "@/lib/utils";
 import { StrengthMeter } from "./strength-meter";
 
+type Route = "choose" | "create" | "restore";
 type Step = "intro" | "phrase" | "verify" | "passphrase";
 
 /** Below this the passphrase is too weak to be the only thing in front of the vault. */
 const MIN_PASSPHRASE_BITS = 60;
 const MIN_PASSPHRASE_LENGTH = 10;
 
+function passphraseIsUsable(value: string): boolean {
+  return (
+    value.length >= MIN_PASSPHRASE_LENGTH &&
+    estimateStrength(value).bits >= MIN_PASSPHRASE_BITS
+  );
+}
+
 export function Onboarding() {
+  const [route, setRoute] = useState<Route>("choose");
+
+  return (
+    <div className="mx-auto w-full max-w-xl px-5 py-8 sm:py-14">
+      {route === "choose" ? <ChooseRoute onPick={setRoute} /> : null}
+      {route === "create" ? <CreateFlow onBack={() => setRoute("choose")} /> : null}
+      {route === "restore" ? <RestoreFlow onBack={() => setRoute("choose")} /> : null}
+    </div>
+  );
+}
+
+/**
+ * The fork in the road.
+ *
+ * With no account system there is no "log in" to default to, and the three
+ * ways in are genuinely different acts: minting a new root secret, bringing
+ * an existing one back from paper, or letting an authenticator hold a copy.
+ * Presenting them as peers avoids the failure where someone returning to
+ * their own vault walks through vault *creation* and ends up with a second,
+ * empty one.
+ */
+function ChooseRoute({ onPick }: { onPick: (route: Route) => void }) {
+  const { unlockWithRegisteredPasskey } = useVault();
+
+  const [passkeyAvailable, setPasskeyAvailable] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPasskeyAvailable(isPasskeySupported());
+  }, []);
+
+  const openWithPasskey = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await unlockWithRegisteredPasskey();
+    } catch (err) {
+      if (!(err instanceof PasskeyCancelledError)) {
+        setError(
+          err instanceof NoPasskeyRecordError
+            ? "That passkey is not registered with a Purbo vault."
+            : err instanceof Error
+              ? err.message
+              : "Could not open the vault with a passkey.",
+        );
+      }
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card className="p-5 sm:p-8">
+      <div className="space-y-3">
+        <ShieldCheck className="size-6" aria-hidden />
+        <h1 className="text-display text-2xl">Open a vault</h1>
+        <p className="text-[0.9375rem] leading-relaxed text-ink-muted">
+          This browser is not holding a vault. Start a new one, or bring an existing
+          vault back — there is no account to sign into, only keys you already have.
+        </p>
+      </div>
+
+      <div className="mt-6 space-y-3">
+        <RouteOption
+          icon={Sparkles}
+          title="Create a new vault"
+          body="Generates a 24-word recovery phrase in this browser. About a minute, and you will need somewhere to write the words down."
+          onClick={() => onPick("create")}
+        />
+        <RouteOption
+          icon={KeyRound}
+          title="I have a recovery phrase"
+          body="Restores a vault you already own onto this device. Your entries come back exactly as you left them."
+          onClick={() => onPick("restore")}
+        />
+        {passkeyAvailable ? (
+          <RouteOption
+            icon={Fingerprint}
+            title="Use a passkey"
+            body="If you registered this device's biometric with a vault, it can open it without the phrase."
+            onClick={openWithPasskey}
+            loading={busy}
+          />
+        ) : null}
+      </div>
+
+      {error ? (
+        <Notice tone="critical" className="mt-5" icon={<AlertTriangle className="size-4" />}>
+          {error}
+        </Notice>
+      ) : null}
+    </Card>
+  );
+}
+
+function RouteOption({
+  icon: Icon,
+  title,
+  body,
+  onClick,
+  loading,
+}: {
+  icon: typeof Sparkles;
+  title: string;
+  body: string;
+  onClick: () => void;
+  loading?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={loading}
+      className={cn(
+        "flex w-full items-start gap-3.5 rounded-[var(--radius)] border border-line bg-elevated p-4 text-left raised",
+        "transition-[background-color,border-color,transform] duration-150",
+        "hover:border-line-strong hover:bg-surface active:translate-y-px",
+        "disabled:pointer-events-none disabled:opacity-60",
+      )}
+    >
+      <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-[var(--radius-sm)] border border-line bg-surface">
+        {loading ? (
+          <PixelLoader />
+        ) : (
+          <Icon className="size-4" aria-hidden />
+        )}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-[0.9375rem] font-medium">{title}</span>
+        <span className="mt-1 block text-[0.8125rem] leading-relaxed text-ink-muted">
+          {body}
+        </span>
+      </span>
+      <ArrowRight className="mt-1.5 size-4 shrink-0 text-ink-subtle" aria-hidden />
+    </button>
+  );
+}
+
+/** Restoring an existing vault: the phrase proves identity and opens it. */
+function RestoreFlow({ onBack }: { onBack: () => void }) {
+  const { restoreWithPhrase } = useVault();
+
+  const [phrase, setPhrase] = useState("");
+  const [passphrase, setPassphrase] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const phraseValid = isValidRecoveryPhrase(phrase);
+  const passphraseValid = passphraseIsUsable(passphrase);
+  const matches = passphrase.length > 0 && passphrase === confirmation;
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await restoreWithPhrase(phrase, passphrase);
+      setPhrase("");
+      setPassphrase("");
+      setConfirmation("");
+    } catch (err) {
+      setError(
+        err instanceof NoVaultForPhraseError
+          ? "No vault is stored for that phrase. Check the words, or create a new vault."
+          : err instanceof Error
+            ? err.message
+            : "Could not restore the vault.",
+      );
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card className="p-5 sm:p-8">
+      <form onSubmit={submit} className="space-y-6">
+        <div className="space-y-2">
+          <KeyRound className="size-6" aria-hidden />
+          <h1 className="text-display text-2xl">Restore your vault</h1>
+          <p className="text-[0.8125rem] leading-relaxed text-ink-muted">
+            Your 24 words derive both the key that fetches the vault and the key that
+            decrypts it. Neither is sent anywhere — the server sees a signature, never
+            the phrase.
+          </p>
+        </div>
+
+        <Textarea
+          label="Recovery phrase"
+          value={phrase}
+          onChange={(event) => setPhrase(event.target.value)}
+          placeholder="word one two three …"
+          rows={4}
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
+          className="font-mono text-[0.8125rem]"
+          error={phrase.length > 0 && !phraseValid ? "Not a valid 24-word phrase." : null}
+          hint={phraseValid ? "Phrase checksum is valid." : "Separate each word with a space."}
+        />
+
+        <div className="space-y-4 border-t border-line pt-5">
+          <p className="text-[0.8125rem] leading-relaxed text-ink-muted">
+            Set a passphrase for this device. It is what unlocks the vault here from now
+            on, so you do not have to type 24 words every time.
+          </p>
+          <PasswordInput
+            label="Passphrase"
+            value={passphrase}
+            onChange={(event) => setPassphrase(event.target.value)}
+            mono={false}
+            required
+            hint={`At least ${MIN_PASSPHRASE_LENGTH} characters and ${MIN_PASSPHRASE_BITS} bits of estimated entropy.`}
+          />
+          <StrengthMeter password={passphrase} />
+          <PasswordInput
+            label="Confirm passphrase"
+            value={confirmation}
+            onChange={(event) => setConfirmation(event.target.value)}
+            mono={false}
+            required
+            error={confirmation.length > 0 && !matches ? "Passphrases do not match." : null}
+          />
+        </div>
+
+        {error ? (
+          <Notice tone="critical" icon={<AlertTriangle className="size-4" />}>
+            {error}
+          </Notice>
+        ) : null}
+
+        {busy ? (
+          <WorkingNotice>
+            Signing in with the key from your phrase, then stretching the new passphrase
+            with Argon2id.
+          </WorkingNotice>
+        ) : null}
+
+        <div className="flex gap-2">
+          <Button type="button" variant="ghost" onClick={onBack} disabled={busy}>
+            <ArrowLeft className="size-4" aria-hidden />
+            Back
+          </Button>
+          <Button
+            type="submit"
+            className="flex-1"
+            loading={busy}
+            disabled={!phraseValid || !passphraseValid || !matches}
+          >
+            Restore vault
+          </Button>
+        </div>
+      </form>
+    </Card>
+  );
+}
+
+function WorkingNotice({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="animate-fade flex items-center gap-3 rounded-[var(--radius-sm)] border border-line bg-surface px-3 py-2.5">
+      <PixelLoader className="shrink-0" />
+      <p className="text-[0.8125rem] leading-relaxed text-ink-muted" role="status">
+        {children}
+      </p>
+    </div>
+  );
+}
+
+function CreateFlow({ onBack }: { onBack: () => void }) {
   const { createVault } = useVault();
 
   const [step, setStep] = useState<Step>("intro");
@@ -58,9 +343,7 @@ export function Onboarding() {
     (index) => answers[index]?.trim().toLowerCase() === words[index],
   );
 
-  const strength = estimateStrength(passphrase);
-  const passphraseValid =
-    passphrase.length >= MIN_PASSPHRASE_LENGTH && strength.bits >= MIN_PASSPHRASE_BITS;
+  const passphraseValid = passphraseIsUsable(passphrase);
   const matches = passphrase.length > 0 && passphrase === confirmation;
 
   const copyPhrase = async () => {
@@ -87,7 +370,7 @@ export function Onboarding() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-xl px-5 py-8 sm:py-14">
+    <>
       <StepIndicator step={step} />
 
       <Card className="mt-5 p-5 sm:mt-6 sm:p-8">
@@ -97,21 +380,28 @@ export function Onboarding() {
               <ShieldCheck className="size-6" aria-hidden />
               <h1 className="text-display text-2xl">Create your vault</h1>
               <p className="text-[0.9375rem] leading-relaxed text-ink-muted">
-                Purbo is about to generate a 24-word recovery phrase in this browser. It is
-                the root of your vault — everything you save is encrypted under it.
+                Purbo is about to generate a 24-word recovery phrase in this browser. It
+                is the root of your vault — everything you save is encrypted under it, and
+                it is also what identifies you to the server.
               </p>
             </div>
 
             <Notice tone="caution" icon={<AlertTriangle className="size-4" />}>
-              The phrase is never sent anywhere, so it cannot be re-sent to you. If you lose
-              both the phrase and your passphrase, the vault cannot be opened by anyone,
-              including us. Have paper and a pen ready.
+              The phrase is never sent anywhere, so it cannot be re-sent to you. If you
+              lose both the phrase and your passphrase, the vault cannot be opened by
+              anyone, including us. Have paper and a pen ready.
             </Notice>
 
-            <Button size="lg" className="w-full" onClick={() => setStep("phrase")}>
-              Generate recovery phrase
-              <ArrowRight className="size-4" aria-hidden />
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="ghost" onClick={onBack}>
+                <ArrowLeft className="size-4" aria-hidden />
+                Back
+              </Button>
+              <Button className="flex-1" onClick={() => setStep("phrase")}>
+                Generate recovery phrase
+                <ArrowRight className="size-4" aria-hidden />
+              </Button>
+            </div>
           </div>
         ) : null}
 
@@ -120,8 +410,8 @@ export function Onboarding() {
             <div className="space-y-2">
               <h1 className="text-display text-2xl">Your recovery phrase</h1>
               <p className="text-[0.8125rem] leading-relaxed text-ink-muted">
-                Write these 24 words down in order and store them somewhere physical. Do not
-                photograph them, and do not put them in another password manager.
+                Write these 24 words down in order and store them somewhere physical. Do
+                not photograph them, and do not put them in another password manager.
               </p>
             </div>
 
@@ -307,13 +597,10 @@ export function Onboarding() {
             ) : null}
 
             {submitting ? (
-              <div className="animate-fade flex items-center gap-3 rounded-[var(--radius-sm)] border border-line bg-surface px-3 py-2.5">
-                <PixelLoader className="shrink-0" />
-                <p className="text-[0.8125rem] leading-relaxed text-ink-muted" role="status">
-                  Deriving your keys with Argon2id and sealing the vault. This happens
-                  entirely in this tab.
-                </p>
-              </div>
+              <WorkingNotice>
+                Deriving your keys with Argon2id and sealing the vault. This happens
+                entirely in this tab.
+              </WorkingNotice>
             ) : null}
 
             <div className="flex gap-2">
@@ -333,7 +620,7 @@ export function Onboarding() {
           </div>
         ) : null}
       </Card>
-    </div>
+    </>
   );
 }
 

@@ -59,7 +59,6 @@ export default async function RootLayout({
 }) {
   // Supplied by middleware; used to satisfy the nonce-based CSP.
   const nonce = (await headers()).get("x-nonce") ?? undefined;
-  const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
 
   return (
     <html
@@ -77,7 +76,7 @@ export default async function RootLayout({
         >
           Skip to content
         </a>
-        <Providers appId={appId}>{children}</Providers>
+        <Providers>{children}</Providers>
         <ServiceWorker />
       </body>
     </html>

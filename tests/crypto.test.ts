@@ -21,12 +21,22 @@ import {
 import { randomInt, toBase64Url, fromBase64Url, wipe } from "@/lib/crypto/primitives";
 import {
   createKeyring,
+  exportRootMaterial,
+  keyringFromRootMaterial,
   unlockWithPassphrase,
   unlockWithRecoveryPhrase,
   rewrapWithNewPassphrase,
   IncorrectPassphraseError,
   IncorrectRecoveryPhraseError,
 } from "@/lib/vault/keyring";
+import {
+  accountIdFor,
+  challengeMessage,
+  identityFromRecoveryPhrase,
+  signChallenge,
+  verifyChallenge,
+} from "@/lib/auth/identity";
+import { mintSessionToken, readSessionToken } from "@/lib/server/token";
 import { encryptItem, decryptItem, decryptAll, draftToItem } from "@/lib/vault/records";
 
 const results: string[] = [];
@@ -44,9 +54,6 @@ async function test(name: string, fn: () => Promise<void> | void) {
     process.exitCode = 1;
   }
 }
-
-const USER = "did:privy:test-user-0001";
-const OTHER_USER = "did:privy:test-user-0002";
 
 // ---------------------------------------------------------------- primitives
 
@@ -226,13 +233,103 @@ await test("seed derivation is deterministic", async () => {
   assert.deepEqual(a, b, "case and whitespace must normalise");
 });
 
+// ------------------------------------------------------------------ identity
+
+await test("identity is deterministic from the phrase", async () => {
+  const phrase = createRecoveryPhrase();
+  const a = await identityFromRecoveryPhrase(phrase);
+  const b = await identityFromRecoveryPhrase(phrase.toUpperCase());
+
+  assert.equal(a.secret.length, 32);
+  assert.equal(a.publicKey.length, 32);
+  assert.equal(a.accountId, b.accountId, "normalisation must reach the identity too");
+  assert.deepEqual(a.publicKey, b.publicKey);
+});
+
+await test("different phrases give different accounts", async () => {
+  const a = await identityFromRecoveryPhrase(createRecoveryPhrase());
+  const b = await identityFromRecoveryPhrase(createRecoveryPhrase());
+  assert.notEqual(a.accountId, b.accountId);
+});
+
+await test("the account id is a hash of the public key alone", async () => {
+  const identity = await identityFromRecoveryPhrase(createRecoveryPhrase());
+  assert.equal(await accountIdFor(identity.publicKey), identity.accountId);
+  // 128 bits, hex.
+  assert.match(identity.accountId, /^[0-9a-f]{32}$/);
+});
+
+await test("a challenge signature verifies, and only for its own message", async () => {
+  const identity = await identityFromRecoveryPhrase(createRecoveryPhrase());
+  const message = challengeMessage("https://purbo.app", "nonce-one", "pk");
+  const signature = signChallenge(identity.secret, message);
+
+  assert.ok(verifyChallenge(signature, message, identity.publicKey));
+
+  // A signature is worth nothing against a different origin, a different
+  // nonce, or a different key — each is a separate replay this closes.
+  assert.equal(
+    verifyChallenge(signature, challengeMessage("https://evil.app", "nonce-one", "pk"), identity.publicKey),
+    false,
+  );
+  assert.equal(
+    verifyChallenge(signature, challengeMessage("https://purbo.app", "nonce-two", "pk"), identity.publicKey),
+    false,
+  );
+
+  const other = await identityFromRecoveryPhrase(createRecoveryPhrase());
+  assert.equal(verifyChallenge(signature, message, other.publicKey), false);
+
+  const tampered = new Uint8Array(signature);
+  tampered[0] = tampered[0]! ^ 0xff;
+  assert.equal(verifyChallenge(tampered, message, identity.publicKey), false);
+});
+
+await test("malformed signatures are refused rather than thrown", async () => {
+  const identity = await identityFromRecoveryPhrase(createRecoveryPhrase());
+  const message = challengeMessage("https://purbo.app", "n", "pk");
+  assert.equal(verifyChallenge(new Uint8Array(10), message, identity.publicKey), false);
+  assert.equal(verifyChallenge(new Uint8Array(64), message, new Uint8Array(3)), false);
+});
+
+// -------------------------------------------------------------- session token
+
+await test("a minted token reads back as its account", async () => {
+  const { token } = await mintSessionToken("account-abc");
+  assert.equal(await readSessionToken(token), "account-abc");
+});
+
+await test("a tampered token is rejected", async () => {
+  const { token } = await mintSessionToken("account-abc");
+  const [prefix, payload, mac] = token.split(".") as [string, string, string];
+
+  // Re-encode the payload with a different subject but keep the original tag:
+  // the exact forgery an unauthenticated claim would need.
+  const forgedPayload = toBase64Url(
+    new TextEncoder().encode(JSON.stringify({ sub: "someone-else", iat: 0, exp: 2 ** 40 })),
+  );
+  assert.equal(await readSessionToken(`${prefix}.${forgedPayload}.${mac}`), null);
+  assert.equal(await readSessionToken(`${prefix}.${payload}.${mac.slice(0, -1)}A`), null);
+  assert.equal(await readSessionToken("nonsense"), null);
+  assert.equal(await readSessionToken(""), null);
+});
+
+await test("an expired token is rejected", async () => {
+  const { token } = await mintSessionToken("account-abc", -1);
+  assert.equal(await readSessionToken(token), null);
+});
+
 // ------------------------------------------------------------------- keyring
 
 await test("create then unlock with the passphrase", async () => {
   const phrase = createRecoveryPhrase();
-  const { envelope, keyring } = await createKeyring(USER, phrase, "a-long-passphrase-1");
+  const { envelope, keyring } = await createKeyring(phrase, "a-long-passphrase-1");
 
-  const reopened = await unlockWithPassphrase(USER, envelope, "a-long-passphrase-1");
+  const reopened = await unlockWithPassphrase(
+    keyring.accountId,
+    envelope,
+    "a-long-passphrase-1",
+  );
 
   const item = draftToItem({ name: "GitHub", username: "me", password: "s3cr3t" });
   const encrypted = await encryptItem(keyring, item);
@@ -242,104 +339,161 @@ await test("create then unlock with the passphrase", async () => {
   assert.equal(decrypted.name, "GitHub");
 });
 
+await test("the account id comes from the phrase, not from the caller", async () => {
+  const phrase = createRecoveryPhrase();
+  const { keyring } = await createKeyring(phrase, "a-long-passphrase-1");
+  const identity = await identityFromRecoveryPhrase(phrase);
+
+  assert.equal(keyring.accountId, identity.accountId);
+  assert.equal(keyring.identity.accountId, identity.accountId);
+});
+
+await test("both unlock paths reach the same signing key", async () => {
+  const phrase = createRecoveryPhrase();
+  const { envelope, keyring } = await createKeyring(phrase, "a-long-passphrase-1");
+
+  // The whole point of wrapping the auth secret into the envelope: a device
+  // that only ever sees the passphrase must still be able to authenticate.
+  const viaPassphrase = await unlockWithPassphrase(
+    keyring.accountId,
+    envelope,
+    "a-long-passphrase-1",
+  );
+  const viaPhrase = await unlockWithRecoveryPhrase(envelope, phrase);
+
+  assert.deepEqual(viaPassphrase.identity.publicKey, viaPhrase.identity.publicKey);
+  assert.equal(viaPassphrase.accountId, viaPhrase.accountId);
+});
+
 await test("a wrong passphrase is rejected uniformly", async () => {
   const phrase = createRecoveryPhrase();
-  const { envelope } = await createKeyring(USER, phrase, "correct-passphrase-1");
+  const { envelope, keyring } = await createKeyring(phrase, "correct-passphrase-1");
 
   await assert.rejects(
-    () => unlockWithPassphrase(USER, envelope, "wrong-passphrase-1"),
+    () => unlockWithPassphrase(keyring.accountId, envelope, "wrong-passphrase-1"),
     (error: unknown) => error instanceof IncorrectPassphraseError,
   );
 });
 
-await test("another user's id cannot unwrap the envelope", async () => {
+await test("an envelope cannot be unwrapped under another account id", async () => {
   const phrase = createRecoveryPhrase();
-  const { envelope } = await createKeyring(USER, phrase, "shared-passphrase-1");
+  const { envelope } = await createKeyring(phrase, "shared-passphrase-1");
+  const stranger = await identityFromRecoveryPhrase(createRecoveryPhrase());
 
-  // Even knowing the passphrase, the AAD binds the envelope to its owner.
+  // Even knowing the passphrase, the AAD binds the envelope to its owner —
+  // so a swapped record fails closed instead of opening for the wrong account.
   await assert.rejects(
-    () => unlockWithPassphrase(OTHER_USER, envelope, "shared-passphrase-1"),
+    () => unlockWithPassphrase(stranger.accountId, envelope, "shared-passphrase-1"),
     (error: unknown) => error instanceof IncorrectPassphraseError,
   );
 });
 
 await test("recovery phrase unlocks without the passphrase", async () => {
   const phrase = createRecoveryPhrase();
-  const { envelope, keyring } = await createKeyring(USER, phrase, "original-passphrase-1");
+  const { envelope, keyring } = await createKeyring(phrase, "original-passphrase-1");
 
   const item = draftToItem({ name: "Bank", username: "acct", password: "vault-value" });
   const encrypted = await encryptItem(keyring, item);
 
-  const viaPhrase = await unlockWithRecoveryPhrase(USER, envelope, phrase);
+  const viaPhrase = await unlockWithRecoveryPhrase(envelope, phrase);
   assert.equal((await decryptItem(viaPhrase, encrypted)).password, "vault-value");
 });
 
 await test("a different phrase is rejected outright", async () => {
   const phrase = createRecoveryPhrase();
-  const { envelope } = await createKeyring(USER, phrase, "original-passphrase-1");
+  const { envelope } = await createKeyring(phrase, "original-passphrase-1");
 
   // Must fail at the verifier, not silently return a keyring that decrypts
   // nothing — that is what would let recovery re-wrap the wrong root key.
   await assert.rejects(
-    () => unlockWithRecoveryPhrase(USER, envelope, createRecoveryPhrase()),
-    (error: unknown) => error instanceof IncorrectRecoveryPhraseError,
-  );
-});
-
-await test("another user cannot recover with a valid phrase", async () => {
-  const phrase = createRecoveryPhrase();
-  const { envelope } = await createKeyring(USER, phrase, "original-passphrase-1");
-
-  await assert.rejects(
-    () => unlockWithRecoveryPhrase(OTHER_USER, envelope, phrase),
+    () => unlockWithRecoveryPhrase(envelope, createRecoveryPhrase()),
     (error: unknown) => error instanceof IncorrectRecoveryPhraseError,
   );
 });
 
 await test("rewrapping refuses a phrase from a different vault", async () => {
   const phrase = createRecoveryPhrase();
-  const { envelope } = await createKeyring(USER, phrase, "original-passphrase-1");
+  const { envelope } = await createKeyring(phrase, "original-passphrase-1");
 
   // The critical case: a checksum-valid but wrong phrase must not replace the
   // envelope, which would strand every existing entry.
   await assert.rejects(
-    () => rewrapWithNewPassphrase(USER, envelope, createRecoveryPhrase(), "new-passphrase-11"),
+    () => rewrapWithNewPassphrase(envelope, createRecoveryPhrase(), "new-passphrase-11"),
     (error: unknown) => error instanceof IncorrectRecoveryPhraseError,
   );
 });
 
 await test("rewrapping keeps existing entries readable", async () => {
   const phrase = createRecoveryPhrase();
-  const { envelope, keyring } = await createKeyring(USER, phrase, "old-passphrase-11");
+  const { envelope, keyring } = await createKeyring(phrase, "old-passphrase-11");
   const encrypted = await encryptItem(
     keyring,
     draftToItem({ name: "Figma", username: "designer", password: "keep-me-readable" }),
   );
 
-  const rewrapped = await rewrapWithNewPassphrase(USER, envelope, phrase, "new-passphrase-11");
+  const rewrapped = await rewrapWithNewPassphrase(envelope, phrase, "new-passphrase-11");
 
-  const viaNew = await unlockWithPassphrase(USER, rewrapped, "new-passphrase-11");
+  const viaNew = await unlockWithPassphrase(
+    keyring.accountId,
+    rewrapped,
+    "new-passphrase-11",
+  );
   assert.equal((await decryptItem(viaNew, encrypted)).password, "keep-me-readable");
 
-  await assert.rejects(() => unlockWithPassphrase(USER, rewrapped, "old-passphrase-11"));
+  await assert.rejects(() =>
+    unlockWithPassphrase(keyring.accountId, rewrapped, "old-passphrase-11"),
+  );
+});
+
+await test("a passkey copy of the root material reopens the vault", async () => {
+  const phrase = createRecoveryPhrase();
+  const { envelope, keyring } = await createKeyring(phrase, "passkey-passphrase-1");
+  const encrypted = await encryptItem(
+    keyring,
+    draftToItem({ name: "Vercel", username: "dep", password: "passkey-readable" }),
+  );
+
+  // What registering a passkey seals, and what unlocking with one unseals.
+  const material = await exportRootMaterial(
+    keyring.accountId,
+    envelope,
+    "passkey-passphrase-1",
+  );
+  const viaPasskey = await keyringFromRootMaterial(material);
+
+  assert.equal(viaPasskey.accountId, keyring.accountId);
+  assert.equal((await decryptItem(viaPasskey, encrypted)).password, "passkey-readable");
+});
+
+await test("exporting root material needs the real passphrase", async () => {
+  const phrase = createRecoveryPhrase();
+  const { envelope, keyring } = await createKeyring(phrase, "passkey-passphrase-1");
+
+  await assert.rejects(
+    () => exportRootMaterial(keyring.accountId, envelope, "not-the-passphrase"),
+    (error: unknown) => error instanceof IncorrectPassphraseError,
+  );
 });
 
 await test("the envelope leaks no plaintext", async () => {
   const phrase = createRecoveryPhrase();
-  const { envelope } = await createKeyring(USER, phrase, "leak-check-passphrase");
+  const { envelope } = await createKeyring(phrase, "leak-check-passphrase");
+  const identity = await identityFromRecoveryPhrase(phrase);
   const serialised = JSON.stringify(envelope);
 
   for (const word of phrase.split(" ")) {
     assert.ok(!serialised.includes(word), `phrase word "${word}" appeared in the envelope`);
   }
   assert.ok(!serialised.includes("leak-check-passphrase"));
+  // The signing secret is in there, but only sealed under the root key.
+  assert.ok(!serialised.includes(toBase64Url(identity.secret)));
 });
 
 // ------------------------------------------------------------------- records
 
 await test("encrypted records expose no field values", async () => {
   const phrase = createRecoveryPhrase();
-  const { keyring } = await createKeyring(USER, phrase, "record-passphrase-1");
+  const { keyring } = await createKeyring(phrase, "record-passphrase-1");
 
   const item = draftToItem({
     name: "Distinctive Name",
@@ -363,7 +517,7 @@ await test("encrypted records expose no field values", async () => {
 
 await test("a record cannot be moved to another id", async () => {
   const phrase = createRecoveryPhrase();
-  const { keyring } = await createKeyring(USER, phrase, "move-passphrase-1");
+  const { keyring } = await createKeyring(phrase, "move-passphrase-1");
 
   const a = draftToItem({ name: "A", username: "a", password: "pw-a" });
   const b = draftToItem({ name: "B", username: "b", password: "pw-b" });
@@ -375,7 +529,7 @@ await test("a record cannot be moved to another id", async () => {
 
 await test("decryptAll isolates a corrupted record", async () => {
   const phrase = createRecoveryPhrase();
-  const { keyring } = await createKeyring(USER, phrase, "partial-passphrase-1");
+  const { keyring } = await createKeyring(phrase, "partial-passphrase-1");
 
   const good = await encryptItem(
     keyring,

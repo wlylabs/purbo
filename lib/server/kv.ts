@@ -2,6 +2,7 @@ import "server-only";
 
 import { Redis } from "@upstash/redis";
 
+import { sha256, toHex, utf8Encode } from "@/lib/crypto/primitives";
 import { isRemoteStorageConfigured, serverEnv } from "./env";
 
 /**
@@ -18,8 +19,16 @@ import { isRemoteStorageConfigured, serverEnv } from "./env";
 
 export interface KvDriver {
   get<T>(key: string): Promise<T | null>;
-  set<T>(key: string, value: T): Promise<void>;
+  set<T>(key: string, value: T, ttlSeconds?: number): Promise<void>;
   delete(key: string): Promise<void>;
+  /**
+   * Reads a key and deletes it in one operation.
+   *
+   * Login nonces must be single-use, and "read, check, then delete" is a race
+   * two concurrent requests can both win. This collapses it into one atomic
+   * step so exactly one caller can ever redeem a given nonce.
+   */
+  consume<T>(key: string): Promise<T | null>;
   /** Fixed-window counter used by the rate limiter. */
   increment(key: string, windowSeconds: number): Promise<number>;
 }
@@ -34,11 +43,18 @@ function createRedisDriver(): KvDriver {
     async get<T>(key: string) {
       return (await redis.get<T>(key)) ?? null;
     },
-    async set<T>(key: string, value: T) {
+    async set<T>(key: string, value: T, ttlSeconds?: number) {
+      if (ttlSeconds && ttlSeconds > 0) {
+        await redis.set(key, value, { ex: ttlSeconds });
+        return;
+      }
       await redis.set(key, value);
     },
     async delete(key: string) {
       await redis.del(key);
+    },
+    async consume<T>(key: string) {
+      return (await redis.getdel<T>(key)) ?? null;
     },
     async increment(key: string, windowSeconds: number) {
       const count = await redis.incr(key);
@@ -51,18 +67,36 @@ function createRedisDriver(): KvDriver {
 }
 
 function createMemoryDriver(): KvDriver {
-  const store = new Map<string, unknown>();
+  const store = new Map<string, { value: unknown; expiresAt: number | null }>();
   const counters = new Map<string, { count: number; expiresAt: number }>();
+
+  const read = (key: string) => {
+    const entry = store.get(key);
+    if (!entry) return null;
+    if (entry.expiresAt !== null && entry.expiresAt <= Date.now()) {
+      store.delete(key);
+      return null;
+    }
+    return entry;
+  };
 
   return {
     async get<T>(key: string) {
-      return (store.get(key) as T) ?? null;
+      return (read(key)?.value as T) ?? null;
     },
-    async set<T>(key: string, value: T) {
-      store.set(key, value);
+    async set<T>(key: string, value: T, ttlSeconds?: number) {
+      store.set(key, {
+        value,
+        expiresAt: ttlSeconds && ttlSeconds > 0 ? Date.now() + ttlSeconds * 1000 : null,
+      });
     },
     async delete(key: string) {
       store.delete(key);
+    },
+    async consume<T>(key: string) {
+      const entry = read(key);
+      store.delete(key);
+      return (entry?.value as T) ?? null;
     },
     async increment(key: string, windowSeconds: number) {
       const now = Date.now();
@@ -98,6 +132,31 @@ export function getKv(): KvDriver {
   return cached;
 }
 
-export function vaultKey(userId: string): string {
-  return `purbo:vault:${userId}`;
+export function vaultKey(accountId: string): string {
+  return `purbo:vault:${accountId}`;
+}
+
+/** A pending login nonce. Short-lived and single-use. */
+export function nonceKey(nonce: string): string {
+  return `purbo:nonce:${nonce}`;
+}
+
+/**
+ * The storage key for a credential id.
+ *
+ * Hashed rather than raw so the key space cannot be walked back into the
+ * credential ids a user's devices would present.
+ */
+export async function credentialHash(credentialId: string): Promise<string> {
+  return toHex(await sha256(utf8Encode(`purbo:cred:v1:${credentialId}`)));
+}
+
+/** A passkey bootstrap record, keyed by the hash above. */
+export function passkeyKey(hash: string): string {
+  return `purbo:passkey:${hash}`;
+}
+
+/** The list of credential hashes registered to an account. */
+export function passkeyIndexKey(accountId: string): string {
+  return `purbo:passkeys:${accountId}`;
 }

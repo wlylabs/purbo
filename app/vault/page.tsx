@@ -8,6 +8,5 @@ export const metadata: Metadata = {
 };
 
 export default function VaultPage() {
-  const configured = Boolean(process.env.NEXT_PUBLIC_PRIVY_APP_ID);
-  return <VaultWorkspace configured={configured} />;
+  return <VaultWorkspace />;
 }

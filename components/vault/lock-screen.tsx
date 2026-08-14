@@ -1,13 +1,18 @@
 "use client";
 
-import { AlertTriangle, KeyRound, Lock } from "lucide-react";
-import { useState } from "react";
+import { AlertTriangle, Fingerprint, KeyRound, Lock } from "lucide-react";
+import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { PasswordInput, Textarea } from "@/components/ui/input";
 import { PixelLoader } from "@/components/ui/loader";
 import { Card, Notice } from "@/components/ui/primitives";
 import { Segmented, segmentedIds } from "@/components/ui/segmented";
+import {
+  NoPasskeyRecordError,
+  PasskeyCancelledError,
+  isPasskeySupported,
+} from "@/lib/auth/passkey";
 import { isValidRecoveryPhrase } from "@/lib/crypto/mnemonic";
 import { estimateStrength } from "@/lib/crypto/password";
 import { useVault } from "@/lib/vault/provider";
@@ -35,11 +40,40 @@ function DerivingNotice() {
 }
 
 export function LockScreen() {
-  const { unlock, recoverWithPhrase, error, clearError } = useVault();
+  const { unlock, unlockWithRegisteredPasskey, recoverWithPhrase, error, clearError } =
+    useVault();
 
   const [mode, setMode] = useState<Mode>("unlock");
   const [passphrase, setPassphrase] = useState("");
   const [busy, setBusy] = useState(false);
+
+  const [passkeyAvailable, setPasskeyAvailable] = useState(false);
+  const [passkeyBusy, setPasskeyBusy] = useState(false);
+  const [passkeyError, setPasskeyError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPasskeyAvailable(isPasskeySupported());
+  }, []);
+
+  const submitPasskey = async () => {
+    setPasskeyBusy(true);
+    setPasskeyError(null);
+    try {
+      await unlockWithRegisteredPasskey();
+    } catch (err) {
+      if (!(err instanceof PasskeyCancelledError)) {
+        setPasskeyError(
+          err instanceof NoPasskeyRecordError
+            ? "No passkey on this device is registered with a Purbo vault."
+            : err instanceof Error
+              ? err.message
+              : "Could not unlock with a passkey.",
+        );
+      }
+    } finally {
+      setPasskeyBusy(false);
+    }
+  };
 
   const [phrase, setPhrase] = useState("");
   const [newPassphrase, setNewPassphrase] = useState("");
@@ -125,6 +159,36 @@ export function LockScreen() {
                 </p>
               </div>
             </div>
+
+            {/* The passkey sits above the field rather than below it: for a
+                device that has one registered it is the faster path, and
+                burying it under the passphrase input means it is only found
+                by people who already knew it was there. */}
+            {passkeyAvailable ? (
+              <div className="space-y-3">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="lg"
+                  className="w-full"
+                  loading={passkeyBusy}
+                  onClick={submitPasskey}
+                >
+                  <Fingerprint className="size-4" aria-hidden />
+                  Unlock with a passkey
+                </Button>
+                {passkeyError ? (
+                  <p className="text-xs leading-relaxed text-critical">{passkeyError}</p>
+                ) : null}
+                <div className="flex items-center gap-3">
+                  <span className="h-px flex-1 bg-line" />
+                  <span className="text-[0.6875rem] uppercase tracking-wide text-ink-subtle">
+                    or
+                  </span>
+                  <span className="h-px flex-1 bg-line" />
+                </div>
+              </div>
+            ) : null}
 
             <PasswordInput
               label="Passphrase"

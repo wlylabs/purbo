@@ -14,9 +14,9 @@ export function Footer() {
     {
       title: "Built with",
       links: [
-        { label: "Privy", href: "https://privy.io", external: true },
-        { label: "Vercel", href: "https://vercel.com", external: true },
         { label: "Next.js", href: "https://nextjs.org", external: true },
+        { label: "noble cryptography", href: "https://paulmillr.com/noble/", external: true },
+        { label: "Vercel", href: "https://vercel.com", external: true },
       ],
     },
   ];

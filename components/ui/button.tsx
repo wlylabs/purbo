@@ -31,6 +31,33 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
   loading?: boolean;
 }
 
+/**
+ * The button's classes without the element.
+ *
+ * Some of these controls are navigation, not actions, and a link that only
+ * looks like a button loses middle-click, "open in new tab" and the status
+ * bar preview. Sharing the styles is what lets those stay real anchors.
+ */
+export function buttonStyles({
+  variant = "primary",
+  size = "md",
+  className,
+}: {
+  variant?: Variant;
+  size?: Size;
+  className?: string;
+} = {}): string {
+  return cn(
+    "inline-flex items-center justify-center font-medium whitespace-nowrap",
+    "transition-[opacity,background-color,border-color,transform] duration-150",
+    "active:translate-y-px",
+    "disabled:pointer-events-none disabled:opacity-45",
+    VARIANTS[variant],
+    SIZES[size],
+    className,
+  );
+}
+
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
   { className, variant = "primary", size = "md", loading, disabled, children, ...props },
   ref,
@@ -39,17 +66,10 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
     <button
       ref={ref}
       disabled={disabled || loading}
-      className={cn(
-        "inline-flex items-center justify-center font-medium whitespace-nowrap",
-        "transition-[opacity,background-color,border-color,transform] duration-150",
-        // A 1px dip on press. Enough to feel like the control took the click
-        // on a touchscreen, where there is no hover state to confirm it.
-        "active:translate-y-px",
-        "disabled:pointer-events-none disabled:opacity-45",
-        VARIANTS[variant],
-        SIZES[size],
-        className,
-      )}
+      // The 1px dip on press lives in `buttonStyles`: enough to feel like the
+      // control took the click on a touchscreen, where there is no hover
+      // state to confirm it.
+      className={buttonStyles({ variant, size, className })}
       {...props}
     >
       {loading ? <Loader2 className="size-4 animate-spin" aria-hidden /> : null}

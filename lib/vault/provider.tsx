@@ -1,6 +1,5 @@
 "use client";
 
-import { usePrivy } from "@privy-io/react-auth";
 import {
   createContext,
   useCallback,
@@ -11,7 +10,21 @@ import {
   useState,
 } from "react";
 
-import { clearLocalVault, readLocalVault, writeLocalVault } from "@/lib/storage/local";
+import { identityFromRecoveryPhrase } from "@/lib/auth/identity";
+import { clearAuthIdentity, setAuthIdentity } from "@/lib/auth/session";
+import {
+  registerPasskey,
+  unlockWithPasskey,
+} from "@/lib/auth/passkey";
+import { wipe } from "@/lib/crypto/primitives";
+import {
+  clearActiveAccount,
+  clearLocalVault,
+  readActiveAccount,
+  readLocalVault,
+  writeActiveAccount,
+  writeLocalVault,
+} from "@/lib/storage/local";
 import {
   RemoteUnavailableError,
   RevisionConflictError,
@@ -22,6 +35,8 @@ import {
 import {
   IncorrectPassphraseError,
   createKeyring,
+  exportRootMaterial,
+  keyringFromRootMaterial,
   rewrapWithNewPassphrase,
   unlockWithPassphrase,
   unlockWithRecoveryPhrase,
@@ -49,11 +64,21 @@ interface VaultContextValue {
   lastSyncedAt: number | null;
   /** Ids of records that failed authentication and could not be decrypted. */
   corrupted: string[];
+  /** The account this device is holding, once one is known. */
+  accountId: string | null;
 
   createVault(recoveryPhrase: string, passphrase: string): Promise<void>;
+  /** First open on a device that has never held this vault. */
+  restoreWithPhrase(recoveryPhrase: string, passphrase: string): Promise<void>;
   unlock(passphrase: string): Promise<void>;
+  unlockWithRegisteredPasskey(): Promise<void>;
+  /** Forgotten passphrase, with the encrypted vault already on this device. */
   recoverWithPhrase(recoveryPhrase: string, newPassphrase: string): Promise<void>;
   lock(): void;
+  /** Drops this device's copy without touching the server's. */
+  forgetDevice(): Promise<void>;
+
+  addPasskey(passphrase: string): Promise<void>;
 
   saveItem(draft: VaultItemDraft, id?: string): Promise<void>;
   removeItem(id: string): Promise<void>;
@@ -74,9 +99,14 @@ const DEFAULT_AUTO_LOCK_MINUTES = 10;
 /** Activity that counts as "the user is still here". */
 const ACTIVITY_EVENTS = ["mousedown", "keydown", "touchstart", "scroll"] as const;
 
-export function VaultProvider({ children }: { children: React.ReactNode }) {
-  const { authenticated, user, ready } = usePrivy();
+export class NoVaultForPhraseError extends Error {
+  constructor() {
+    super("No vault is stored for that recovery phrase.");
+    this.name = "NoVaultForPhraseError";
+  }
+}
 
+export function VaultProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<VaultStatus>("loading");
   const [items, setItems] = useState<VaultItem[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -84,6 +114,7 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
   const [corrupted, setCorrupted] = useState<string[]>([]);
+  const [accountId, setAccountId] = useState<string | null>(null);
   const [autoLockMinutes, setAutoLockMinutesState] = useState(DEFAULT_AUTO_LOCK_MINUTES);
 
   // Key material and ciphertext live in refs, never in state: state is
@@ -92,8 +123,6 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
   const envelopeRef = useRef<KeyEnvelope | null>(null);
   const encryptedRef = useRef<EncryptedItem[]>([]);
   const revisionRef = useRef(0);
-
-  const userId = authenticated && user ? user.id : null;
 
   useEffect(() => {
     const stored = window.localStorage.getItem(AUTO_LOCK_STORAGE_KEY);
@@ -113,16 +142,26 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
     setLastSyncedAt(Date.now());
   }, []);
 
+  /**
+   * Locking drops the identity along with the keys.
+   *
+   * The signing secret is the same secret that decrypts, so leaving it live
+   * behind a lock screen would mean a locked tab could still read and write
+   * the vault on the server. Re-authenticating costs one round-trip on the
+   * next unlock, which nobody notices.
+   */
   const lock = useCallback(() => {
     keyringRef.current = null;
+    clearAuthIdentity();
     setItems([]);
     setCorrupted([]);
     setStatus(envelopeRef.current ? "locked" : "absent");
   }, []);
 
-  /** Drops every trace of the session, e.g. on logout. */
+  /** Drops every trace of the session from memory. */
   const reset = useCallback(() => {
     keyringRef.current = null;
+    clearAuthIdentity();
     envelopeRef.current = null;
     encryptedRef.current = [];
     revisionRef.current = 0;
@@ -130,75 +169,64 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
     setCorrupted([]);
     setLastSyncedAt(null);
     setError(null);
-    setStatus("loading");
   }, []);
 
   /**
-   * Loads the encrypted vault for the signed-in user.
+   * What this browser knows before anyone has proved anything.
    *
-   * Remote is authoritative when reachable; the local copy is a cache that
-   * keeps the vault openable offline. The higher revision wins, so a device
-   * that was offline while another one wrote does not resurrect stale data.
+   * There is no session to restore on load: with identity derived from the
+   * recovery phrase, the server cannot tell us who we are — only the user
+   * can, by unlocking. So startup is a purely local question: is there a
+   * cached vault here, or is this a fresh start?
    */
-  const loadVault = useCallback(async (id: string) => {
-    setStatus("loading");
-    setSyncState("syncing");
-
-    const local = await readLocalVault(id);
-    let remote: EncryptedVault | null = null;
-
-    try {
-      remote = await fetchRemoteVault();
-      markSynced();
-    } catch (err) {
-      setSyncState("offline");
-      setSyncMessage(
-        err instanceof RemoteUnavailableError
-          ? err.message
-          : "Working offline — changes are saved on this device.",
-      );
-    }
-
-    const chosen =
-      remote && local ? (remote.revision >= local.revision ? remote : local) : (remote ?? local);
-
-    if (!chosen) {
-      envelopeRef.current = null;
-      encryptedRef.current = [];
-      revisionRef.current = 0;
-      setStatus("absent");
-      return;
-    }
-
-    envelopeRef.current = chosen.envelope;
-    encryptedRef.current = chosen.items;
-    revisionRef.current = chosen.revision;
-    setStatus("locked");
-
-    if (remote && (!local || remote.revision > local.revision)) {
-      await writeLocalVault(id, remote);
-    }
-  }, [markSynced]);
-
   useEffect(() => {
-    if (!ready) return;
-    if (!userId) {
-      reset();
-      setStatus("absent");
-      return;
-    }
-    void loadVault(userId).catch(() => {
-      setStatus("absent");
-      setError("Could not load your vault. Refresh to try again.");
-    });
-  }, [ready, userId, loadVault, reset]);
+    let cancelled = false;
+
+    const boot = async () => {
+      const stored = readActiveAccount();
+      if (!stored) {
+        if (!cancelled) setStatus("absent");
+        return;
+      }
+
+      const local = await readLocalVault(stored);
+      if (cancelled) return;
+
+      if (!local) {
+        // The pointer outlived the cache — a cleared site storage, or a
+        // partial eviction. Nothing here can be unlocked, so this device is
+        // back to needing the recovery phrase.
+        clearActiveAccount();
+        setStatus("absent");
+        return;
+      }
+
+      envelopeRef.current = local.envelope;
+      encryptedRef.current = local.items;
+      revisionRef.current = local.revision;
+      setAccountId(stored);
+      setStatus("locked");
+    };
+
+    void boot();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const decryptInto = useCallback(async (keyring: Keyring) => {
+    const { items: decrypted, failed } = await decryptAll(keyring, encryptedRef.current);
+    decrypted.sort((a, b) => b.updatedAt - a.updatedAt);
+    setItems(decrypted);
+    setCorrupted(failed);
+  }, []);
 
   /** Encrypts current state and persists it locally, then remotely. */
   const persist = useCallback(
     async (nextEncrypted: EncryptedItem[]) => {
-      const id = userId;
+      const keyring = keyringRef.current;
       const envelope = envelopeRef.current;
-      if (!id || !envelope) return;
+      if (!keyring || !envelope) return;
 
       const revision = revisionRef.current + 1;
       const vault: EncryptedVault = {
@@ -212,7 +240,7 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
       revisionRef.current = revision;
 
       // Local first: an offline save must still survive a reload.
-      await writeLocalVault(id, vault);
+      await writeLocalVault(keyring.accountId, vault);
 
       setSyncState("syncing");
       try {
@@ -246,16 +274,73 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
         );
       }
     },
-    [userId, markSynced],
+    [markSynced],
   );
+
+  /**
+   * Reconciles with the server once the vault is open.
+   *
+   * This can only run after unlocking, because authenticating *is* unlocking:
+   * the key that signs the login challenge comes out of the same envelope as
+   * the key that decrypts. The higher revision wins, so a device that was
+   * offline while another one wrote does not resurrect stale data.
+   */
+  const syncAfterUnlock = useCallback(
+    async (keyring: Keyring) => {
+      setSyncState("syncing");
+      try {
+        const remote = await fetchRemoteVault();
+
+        if (remote && remote.revision > revisionRef.current) {
+          envelopeRef.current = remote.envelope;
+          encryptedRef.current = remote.items;
+          revisionRef.current = remote.revision;
+          await writeLocalVault(keyring.accountId, remote);
+          await decryptInto(keyring);
+          markSynced();
+          return;
+        }
+
+        if (!remote || remote.revision < revisionRef.current) {
+          // This device is ahead — an offline edit, or a vault that has never
+          // reached the server. Push rather than silently diverge.
+          const envelope = envelopeRef.current;
+          if (envelope) {
+            await pushRemoteVault({
+              envelope,
+              items: encryptedRef.current,
+              revision: revisionRef.current + 1,
+            });
+            revisionRef.current += 1;
+          }
+        }
+        markSynced();
+      } catch (err) {
+        setSyncState("offline");
+        setSyncMessage(
+          err instanceof RemoteUnavailableError
+            ? err.message
+            : "Working offline — changes are saved on this device.",
+        );
+      }
+    },
+    [decryptInto, markSynced],
+  );
+
+  /** Everything that has to happen the moment a keyring exists. */
+  const adoptKeyring = useCallback((keyring: Keyring) => {
+    keyringRef.current = keyring;
+    setAuthIdentity(keyring.identity);
+    setAccountId(keyring.accountId);
+    writeActiveAccount(keyring.accountId);
+  }, []);
 
   const createVault = useCallback(
     async (recoveryPhrase: string, passphrase: string) => {
-      if (!userId) throw new Error("Sign in first.");
       setError(null);
 
-      const { envelope, keyring } = await createKeyring(userId, recoveryPhrase, passphrase);
-      keyringRef.current = keyring;
+      const { envelope, keyring } = await createKeyring(recoveryPhrase, passphrase);
+      adoptKeyring(keyring);
       envelopeRef.current = envelope;
       encryptedRef.current = [];
       revisionRef.current = 0;
@@ -264,28 +349,61 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
 
       await persist([]);
     },
-    [userId, persist],
+    [adoptKeyring, persist],
   );
 
-  const decryptInto = useCallback(async (keyring: Keyring) => {
-    const { items: decrypted, failed } = await decryptAll(keyring, encryptedRef.current);
-    decrypted.sort((a, b) => b.updatedAt - a.updatedAt);
-    setItems(decrypted);
-    setCorrupted(failed);
-  }, []);
+  /**
+   * First open on a new device.
+   *
+   * The phrase does double duty here: it derives the identity that fetches
+   * the encrypted vault, then unwraps it. Setting a passphrase at the same
+   * time is not an extra step so much as the point — it is what makes the
+   * next unlock on this device fast.
+   */
+  const restoreWithPhrase = useCallback(
+    async (recoveryPhrase: string, passphrase: string) => {
+      setError(null);
+
+      setAuthIdentity(await identityFromRecoveryPhrase(recoveryPhrase));
+
+      const remote = await fetchRemoteVault();
+      if (!remote) {
+        clearAuthIdentity();
+        throw new NoVaultForPhraseError();
+      }
+
+      const keyring = await unlockWithRecoveryPhrase(remote.envelope, recoveryPhrase);
+      const envelope = await rewrapWithNewPassphrase(
+        remote.envelope,
+        recoveryPhrase,
+        passphrase,
+      );
+
+      adoptKeyring(keyring);
+      envelopeRef.current = envelope;
+      encryptedRef.current = remote.items;
+      revisionRef.current = remote.revision;
+      await decryptInto(keyring);
+      setStatus("unlocked");
+
+      await persist(remote.items);
+    },
+    [adoptKeyring, decryptInto, persist],
+  );
 
   const unlock = useCallback(
     async (passphrase: string) => {
-      if (!userId) throw new Error("Sign in first.");
       const envelope = envelopeRef.current;
-      if (!envelope) throw new Error("No vault to unlock.");
+      const stored = accountId ?? readActiveAccount();
+      if (!envelope || !stored) throw new Error("No vault to unlock.");
 
       setError(null);
       try {
-        const keyring = await unlockWithPassphrase(userId, envelope, passphrase);
-        keyringRef.current = keyring;
+        const keyring = await unlockWithPassphrase(stored, envelope, passphrase);
+        adoptKeyring(keyring);
         await decryptInto(keyring);
         setStatus("unlocked");
+        void syncAfterUnlock(keyring);
       } catch (err) {
         if (err instanceof IncorrectPassphraseError) {
           setError(err.message);
@@ -295,8 +413,55 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
         throw err;
       }
     },
-    [userId, decryptInto],
+    [accountId, adoptKeyring, decryptInto, syncAfterUnlock],
   );
+
+  /**
+   * Opens the vault with a passkey.
+   *
+   * This works on a device that holds nothing at all: the authenticator's PRF
+   * secret unwraps a stored copy of the root key, which yields both the data
+   * key and the identity needed to fetch the vault.
+   */
+  const unlockWithRegisteredPasskey = useCallback(async () => {
+    setError(null);
+    const { material } = await unlockWithPasskey();
+
+    try {
+      const keyring = await keyringFromRootMaterial(material);
+      adoptKeyring(keyring);
+
+      const remote = await fetchRemoteVault();
+      const local = await readLocalVault(keyring.accountId);
+      const chosen =
+        remote && local
+          ? remote.revision >= local.revision
+            ? remote
+            : local
+          : (remote ?? local);
+
+      if (!chosen) {
+        clearAuthIdentity();
+        keyringRef.current = null;
+        throw new Error(
+          "That passkey opens an account with no vault left on the server.",
+        );
+      }
+
+      envelopeRef.current = chosen.envelope;
+      encryptedRef.current = chosen.items;
+      revisionRef.current = chosen.revision;
+      if (chosen === remote) await writeLocalVault(keyring.accountId, chosen);
+
+      await decryptInto(keyring);
+      setStatus("unlocked");
+      markSynced();
+    } finally {
+      // The root key was only needed to build the keyring; the identity's
+      // secret is now owned by the session layer.
+      wipe(material.rootKey);
+    }
+  }, [adoptKeyring, decryptInto, markSynced]);
 
   /**
    * Recovery path: prove ownership with the phrase, then set a new
@@ -304,26 +469,47 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
    */
   const recoverWithPhrase = useCallback(
     async (recoveryPhrase: string, newPassphrase: string) => {
-      if (!userId) throw new Error("Sign in first.");
       const envelope = envelopeRef.current;
       if (!envelope) throw new Error("No vault to recover.");
 
       setError(null);
-      const keyring = await unlockWithRecoveryPhrase(userId, envelope, recoveryPhrase);
+      const keyring = await unlockWithRecoveryPhrase(envelope, recoveryPhrase);
       const nextEnvelope = await rewrapWithNewPassphrase(
-        userId,
         envelope,
         recoveryPhrase,
         newPassphrase,
       );
 
-      keyringRef.current = keyring;
+      adoptKeyring(keyring);
       envelopeRef.current = nextEnvelope;
       await decryptInto(keyring);
       setStatus("unlocked");
       await persist(encryptedRef.current);
     },
-    [userId, decryptInto, persist],
+    [adoptKeyring, decryptInto, persist],
+  );
+
+  /**
+   * Registers a passkey against this vault.
+   *
+   * The passphrase is asked for again rather than reusing the open session:
+   * adding a way into the vault deserves to be an explicit re-authorisation,
+   * and it keeps the root key out of memory for everything except this call.
+   */
+  const addPasskey = useCallback(
+    async (passphrase: string) => {
+      const envelope = envelopeRef.current;
+      const keyring = keyringRef.current;
+      if (!envelope || !keyring) throw new Error("Unlock the vault first.");
+
+      const material = await exportRootMaterial(keyring.accountId, envelope, passphrase);
+      try {
+        await registerPasskey(keyring.accountId, material);
+      } finally {
+        wipe(material.rootKey, material.authSecret);
+      }
+    },
+    [],
   );
 
   const saveItem = useCallback(
@@ -362,17 +548,37 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
   );
 
   const destroyVault = useCallback(async () => {
-    if (!userId) return;
+    const current = keyringRef.current?.accountId ?? accountId;
+    if (!current) return;
     try {
       await deleteRemoteVault();
     } catch {
       // Local wipe proceeds regardless — the user asked for this device to
       // forget the vault, and a network failure must not block that.
     }
-    await clearLocalVault(userId);
+    await clearLocalVault(current);
+    clearActiveAccount();
     reset();
+    setAccountId(null);
     setStatus("absent");
-  }, [userId, reset]);
+  }, [accountId, reset]);
+
+  /**
+   * Removes this device's copy, leaving the server's untouched.
+   *
+   * The honest name for "sign out" in a system with no sessions to end: there
+   * is nothing to revoke, so what this actually does is delete the cached
+   * ciphertext and forget which account it belonged to. Coming back needs the
+   * recovery phrase or a passkey.
+   */
+  const forgetDevice = useCallback(async () => {
+    const current = keyringRef.current?.accountId ?? accountId;
+    if (current) await clearLocalVault(current);
+    clearActiveAccount();
+    reset();
+    setAccountId(null);
+    setStatus("absent");
+  }, [accountId, reset]);
 
   // ---- Auto-lock -------------------------------------------------------
   // A vault left open on an unattended screen is the most realistic way this
@@ -408,10 +614,15 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
       syncMessage,
       lastSyncedAt,
       corrupted,
+      accountId,
       createVault,
+      restoreWithPhrase,
       unlock,
+      unlockWithRegisteredPasskey,
       recoverWithPhrase,
       lock,
+      forgetDevice,
+      addPasskey,
       saveItem,
       removeItem,
       destroyVault,
@@ -427,10 +638,15 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
       syncMessage,
       lastSyncedAt,
       corrupted,
+      accountId,
       createVault,
+      restoreWithPhrase,
       unlock,
+      unlockWithRegisteredPasskey,
       recoverWithPhrase,
       lock,
+      forgetDevice,
+      addPasskey,
       saveItem,
       removeItem,
       destroyVault,

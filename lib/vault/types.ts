@@ -55,10 +55,45 @@ export interface KeyEnvelope {
    */
   readonly verifier: SealedBox;
   /**
+   * The account's Ed25519 signing secret, sealed under a subkey of the root
+   * key.
+   *
+   * It is the same secret the recovery phrase derives directly. Storing a
+   * wrapped copy is what lets the passphrase path reach it: a device unlocking
+   * with the passphrase never sees the BIP39 seed, but still has to be able
+   * to authenticate in order to sync.
+   */
+  readonly auth: SealedBox;
+  /**
    * HKDF salt for root -> data-key expansion. Public by design; HKDF salts
    * are not secrets, they just separate derivations.
    */
   readonly rootSalt: string;
+  readonly createdAt: number;
+}
+
+/**
+ * What a passkey stores on the server so a device holding neither the phrase
+ * nor the passphrase can still open the vault.
+ *
+ * `sealed` holds the root key and the auth secret, encrypted under a key that
+ * only the authenticator can reproduce (WebAuthn's PRF extension, gated
+ * behind the user's biometric or device PIN). The server hands this record to
+ * anyone presenting the credential id — which is why the contents are sealed:
+ * the credential id is a lookup handle, never the secret.
+ */
+export interface PasskeyRecord {
+  readonly version: 1;
+  readonly accountId: string;
+  readonly rootSalt: string;
+  readonly sealed: SealedBox;
+  readonly createdAt: number;
+}
+
+/** Server-side listing of the passkeys registered to an account. */
+export interface PasskeySummary {
+  /** Hash of the credential id — the record's storage key, not the id itself. */
+  readonly hash: string;
   readonly createdAt: number;
 }
 

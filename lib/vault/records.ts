@@ -27,7 +27,7 @@ export async function encryptItem(
   const { id, ...payload } = item;
   return {
     id,
-    payload: await sealJson(keyring.dataKey, payload satisfies ItemPayload, itemAad(keyring.userId, id)),
+    payload: await sealJson(keyring.dataKey, payload satisfies ItemPayload, itemAad(keyring.accountId, id)),
     updatedAt: item.updatedAt,
   };
 }
@@ -39,7 +39,7 @@ export async function decryptItem(
   const payload = await openJson<ItemPayload>(
     keyring.dataKey,
     encrypted.payload,
-    itemAad(keyring.userId, encrypted.id),
+    itemAad(keyring.accountId, encrypted.id),
   );
   return { ...payload, id: encrypted.id };
 }
