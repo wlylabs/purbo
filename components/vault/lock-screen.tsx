@@ -62,8 +62,8 @@ export function LockScreen() {
   };
 
   return (
-    <div className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center px-5 py-12">
-      <Card className="p-6 sm:p-8">
+    <div className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center px-5 py-8 sm:py-12">
+      <Card className="p-5 sm:p-8">
         {mode === "unlock" ? (
           <form onSubmit={submitUnlock} className="space-y-6">
             <div className="space-y-3">

@@ -86,10 +86,10 @@ export function Onboarding() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-xl px-5 py-12 sm:py-16">
+    <div className="mx-auto w-full max-w-xl px-5 py-8 sm:py-14">
       <StepIndicator step={step} />
 
-      <Card className="mt-6 p-6 sm:p-8">
+      <Card className="mt-5 p-5 sm:mt-6 sm:p-8">
         {step === "intro" ? (
           <div className="space-y-6">
             <div className="space-y-3">

@@ -32,10 +32,10 @@ export function Dashboard() {
   }, []);
 
   return (
-    <div className="mx-auto max-w-6xl px-5 pt-8 pb-[calc(2rem+env(safe-area-inset-bottom))] sm:px-6 sm:pt-10 sm:pb-[calc(2.5rem+env(safe-area-inset-bottom))]">
+    <div className="mx-auto max-w-6xl px-5 pt-5 pb-[calc(1.5rem+env(safe-area-inset-bottom))] sm:px-6 sm:pt-10 sm:pb-[calc(2.5rem+env(safe-area-inset-bottom))]">
       <nav
         aria-label="Vault sections"
-        className="mb-8 inline-flex rounded-[var(--radius-sm)] border border-line p-0.5"
+        className="mb-5 inline-flex rounded-[var(--radius-sm)] border border-line p-0.5 sm:mb-8"
       >
         {TABS.map(({ id, label, icon: Icon }) => (
           <button

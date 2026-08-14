@@ -60,10 +60,10 @@ export function Hero({ configured }: { configured: boolean }) {
     <section className="relative overflow-hidden border-b border-line">
       <div aria-hidden className="pointer-events-none absolute inset-0 bg-grid opacity-60" />
 
-      <div className="relative mx-auto max-w-6xl px-5 sm:px-6 pt-16 pb-20 sm:pt-24 sm:pb-28">
-        <div className="grid items-center gap-12 lg:grid-cols-[1.05fr_0.95fr] lg:gap-16">
+      <div className="relative mx-auto max-w-6xl px-5 sm:px-6 pt-10 pb-14 sm:pt-24 sm:pb-28">
+        <div className="grid items-center gap-9 sm:gap-12 lg:grid-cols-[1.05fr_0.95fr] lg:gap-16">
           <div className="animate-in-up">
-            <Badge className="mb-6">
+            <Badge className="mb-5 sm:mb-6">
               <span className="size-1.5 rounded-full bg-positive" />
               Zero-knowledge by design
             </Badge>
@@ -74,13 +74,13 @@ export function Hero({ configured }: { configured: boolean }) {
               sealed like a wallet.
             </h1>
 
-            <p className="mt-6 max-w-xl text-[1.0625rem] leading-relaxed text-ink-muted">
+            <p className="mt-5 max-w-xl text-[1.0625rem] leading-relaxed text-ink-muted sm:mt-6">
               Purbo encrypts every entry in your browser before it touches the network. You
               get a 24-word recovery phrase and a passphrase — the same shape as a crypto
               wallet, pointed at the thing you actually log into every day.
             </p>
 
-            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+            <div className="mt-7 flex flex-col gap-3 sm:mt-8 sm:flex-row">
               <AuthButton configured={configured} size="lg" label="Create your wallet" />
               <a
                 href="#how"
@@ -90,7 +90,7 @@ export function Hero({ configured }: { configured: boolean }) {
               </a>
             </div>
 
-            <ul className="mt-8 flex flex-wrap gap-x-6 gap-y-2">
+            <ul className="mt-6 flex flex-wrap gap-x-6 gap-y-2 sm:mt-8">
               {[
                 "No master password on our servers",
                 "Argon2id + AES-256-GCM",

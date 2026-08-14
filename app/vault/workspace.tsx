@@ -30,7 +30,7 @@ export function VaultWorkspace({ configured }: { configured: boolean }) {
 
 function Centered({ children }: { children: React.ReactNode }) {
   return (
-    <div className="grid min-h-dvh place-items-center px-5 py-12">
+    <div className="grid min-h-dvh place-items-center px-5 py-10 sm:py-12">
       <div className="w-full max-w-md">{children}</div>
     </div>
   );
@@ -39,7 +39,7 @@ function Centered({ children }: { children: React.ReactNode }) {
 function NotConfigured() {
   return (
     <Centered>
-      <Card className="p-6 sm:p-8">
+      <Card className="p-5 sm:p-8">
         <ShieldAlert className="size-6" aria-hidden />
         <h1 className="text-display mt-4 text-2xl">Sign-in is not configured</h1>
         <p className="mt-2 text-[0.8125rem] leading-relaxed text-ink-muted">
@@ -94,7 +94,7 @@ function AuthGate() {
   if (!authenticated) {
     return (
       <Centered>
-        <Card className="p-6 text-center sm:p-8">
+        <Card className="p-5 text-center sm:p-8">
           <Wordmark className="justify-center" />
           <h1 className="text-display mt-5 text-2xl">Sign in to open your vault</h1>
           <p className="mt-2 text-[0.8125rem] leading-relaxed text-ink-muted">

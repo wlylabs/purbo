@@ -43,7 +43,7 @@ export function VaultView() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5 sm:space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="relative flex-1">
           <Search
@@ -76,7 +76,7 @@ export function VaultView() {
       {items.length === 0 ? (
         <EmptyState onAdd={openNew} />
       ) : filtered.length === 0 ? (
-        <div className="rounded-[var(--radius-lg)] border border-line py-16 text-center">
+        <div className="rounded-[var(--radius-lg)] border border-line py-12 text-center sm:py-16">
           <p className="text-[0.9375rem] font-medium">No matches</p>
           <p className="mt-1 text-[0.8125rem] text-ink-muted">
             Nothing in your vault matches &ldquo;{query}&rdquo;.
@@ -179,7 +179,7 @@ function GridFillers({ count }: { count: number }) {
 
 function EmptyState({ onAdd }: { onAdd: () => void }) {
   return (
-    <div className="rounded-[var(--radius-lg)] border border-line px-6 py-20 text-center">
+    <div className="rounded-[var(--radius-lg)] border border-line px-5 py-14 text-center sm:px-6 sm:py-20">
       <div className="mx-auto grid size-11 place-items-center rounded-[var(--radius-sm)] border border-line bg-surface">
         <KeyRound className="size-5 text-ink-muted" aria-hidden />
       </div>
