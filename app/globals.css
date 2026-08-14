@@ -4,8 +4,10 @@
  * Purbo design tokens.
  *
  * Monochrome base, one inverted primary, colour reserved for meaning
- * (strength, sync state, danger). Flat surfaces separated by 1px borders —
- * no glows, no coloured shadows, no gradient fills on interactive elements.
+ * (strength, sync state, danger). Surfaces are separated by 1px borders and
+ * lifted by a *neutral* shadow plus a 1px inset highlight along the top edge —
+ * the depth cue is achromatic on purpose. Still no coloured glows and no
+ * gradient fills on interactive elements.
  */
 
 :root {
@@ -36,6 +38,20 @@
   --radius: 0.75rem;
   --radius-sm: 0.5rem;
   --radius-lg: 1rem;
+
+  /* Depth. Achromatic, and small enough that a card still reads as flat
+     paper rather than a floating panel. */
+  --shadow-sm: 0 1px 2px -1px rgb(9 9 11 / 0.08), 0 1px 1px rgb(9 9 11 / 0.04);
+  --shadow-md: 0 1px 2px -1px rgb(9 9 11 / 0.08), 0 6px 16px -6px rgb(9 9 11 / 0.1);
+  --shadow-lg: 0 2px 4px -2px rgb(9 9 11 / 0.1), 0 18px 40px -12px rgb(9 9 11 / 0.16);
+
+  /* The 1px catch-light along a raised edge. In light mode it is the paper
+     under the border; in dark mode it is the only thing separating two
+     near-black surfaces. */
+  --highlight: rgb(255 255 255 / 0.9);
+
+  /* Travelling band used by skeletons. */
+  --shimmer: rgb(9 9 11 / 0.06);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -63,6 +79,13 @@
     --info: #a5b4fc;
 
     --ring: #fafafa;
+
+    --shadow-sm: 0 1px 2px -1px rgb(0 0 0 / 0.5), 0 1px 1px rgb(0 0 0 / 0.3);
+    --shadow-md: 0 1px 2px -1px rgb(0 0 0 / 0.5), 0 6px 16px -6px rgb(0 0 0 / 0.55);
+    --shadow-lg: 0 2px 4px -2px rgb(0 0 0 / 0.6), 0 18px 40px -12px rgb(0 0 0 / 0.7);
+
+    --highlight: rgb(255 255 255 / 0.06);
+    --shimmer: rgb(255 255 255 / 0.06);
   }
 }
 
@@ -90,6 +113,13 @@
   --info: #a5b4fc;
 
   --ring: #fafafa;
+
+  --shadow-sm: 0 1px 2px -1px rgb(0 0 0 / 0.5), 0 1px 1px rgb(0 0 0 / 0.3);
+  --shadow-md: 0 1px 2px -1px rgb(0 0 0 / 0.5), 0 6px 16px -6px rgb(0 0 0 / 0.55);
+  --shadow-lg: 0 2px 4px -2px rgb(0 0 0 / 0.6), 0 18px 40px -12px rgb(0 0 0 / 0.7);
+
+  --highlight: rgb(255 255 255 / 0.06);
+  --shimmer: rgb(255 255 255 / 0.06);
 }
 
 @theme inline {
@@ -117,6 +147,10 @@
   --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", monospace;
 
   --radius-base: var(--radius);
+
+  --shadow-raised: var(--shadow-sm);
+  --shadow-float: var(--shadow-md);
+  --shadow-modal: var(--shadow-lg);
 }
 
 @layer base {
@@ -239,6 +273,33 @@
     color: var(--ink-subtle);
   }
 
+  /* Machine-readable metadata: revisions, bit counts, timestamps, hashes.
+     Always mono, always subdued — it should never compete with prose. */
+  .text-meta {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    line-height: 1.4;
+    color: var(--ink-subtle);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /*
+   * A surface that sits above the page. The inset line is drawn first so it
+   * lands just inside the border rather than replacing it, which is what
+   * makes the edge read as a lit bevel instead of a doubled stroke.
+   */
+  .raised {
+    box-shadow: inset 0 1px 0 0 var(--highlight), var(--shadow-sm);
+  }
+
+  .raised-float {
+    box-shadow: inset 0 1px 0 0 var(--highlight), var(--shadow-md);
+  }
+
+  .raised-modal {
+    box-shadow: inset 0 1px 0 0 var(--highlight), var(--shadow-lg);
+  }
+
   /* Faint grid, used behind the hero only. Static — no animation, no glow. */
   .bg-grid {
     background-image:
@@ -289,6 +350,77 @@
     }
     to {
       opacity: 1;
+    }
+  }
+
+  /*
+   * Staged reveal. A list marks itself `.stagger` and each child gets its own
+   * `--stagger-index`; the delay is derived rather than hand-written per item,
+   * and capped so a long vault does not take three seconds to finish arriving.
+   */
+  .stagger > * {
+    animation: in-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation-delay: calc(min(var(--stagger-index, 0), 12) * 28ms);
+  }
+
+  /* Skeleton block: a static base with one band travelling across it. */
+  .animate-shimmer {
+    position: relative;
+    overflow: hidden;
+    background-color: var(--surface);
+  }
+
+  .animate-shimmer::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: linear-gradient(
+      90deg,
+      transparent 0%,
+      var(--shimmer) 50%,
+      transparent 100%
+    );
+    animation: shimmer 1.5s ease-in-out infinite;
+  }
+
+  @keyframes shimmer {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(100%);
+    }
+  }
+
+  /* One cell of the pixel-grid loader. The delay is set per cell inline. */
+  .animate-pixel {
+    animation: pixel 1.2s ease-in-out infinite;
+  }
+
+  @keyframes pixel {
+    0%,
+    100% {
+      opacity: 0.15;
+    }
+    45% {
+      opacity: 1;
+    }
+  }
+
+  /* Expanding ring behind a status dot, for states that are actively working. */
+  .animate-ping-ring {
+    animation: ping-ring 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+  }
+
+  @keyframes ping-ring {
+    0% {
+      transform: scale(1);
+      opacity: 0.45;
+    }
+    75%,
+    100% {
+      transform: scale(2.6);
+      opacity: 0;
     }
   }
 }

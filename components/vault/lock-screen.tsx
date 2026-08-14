@@ -1,20 +1,43 @@
 "use client";
 
-import { AlertTriangle, Lock } from "lucide-react";
+import { AlertTriangle, KeyRound, Lock } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { PasswordInput, Textarea } from "@/components/ui/input";
+import { PixelLoader } from "@/components/ui/loader";
 import { Card, Notice } from "@/components/ui/primitives";
+import { Segmented, segmentedIds } from "@/components/ui/segmented";
 import { isValidRecoveryPhrase } from "@/lib/crypto/mnemonic";
 import { estimateStrength } from "@/lib/crypto/password";
 import { useVault } from "@/lib/vault/provider";
 import { StrengthMeter } from "./strength-meter";
 
+type Mode = "unlock" | "recover";
+
+/**
+ * What the browser is doing during the pause after "Unlock".
+ *
+ * Argon2id at 64 MiB is meant to be slow, and on a phone that is a visible
+ * wait on a screen where a hang and a rejected passphrase look identical.
+ * Naming the work turns dead time into evidence that the stretching is real.
+ */
+function DerivingNotice() {
+  return (
+    <div className="animate-fade flex items-center gap-3 rounded-[var(--radius-sm)] border border-line bg-surface px-3 py-2.5">
+      <PixelLoader className="shrink-0" />
+      <p className="text-[0.8125rem] leading-relaxed text-ink-muted" role="status">
+        Stretching your passphrase with Argon2id. This is deliberately slow — it is what
+        makes offline guessing expensive.
+      </p>
+    </div>
+  );
+}
+
 export function LockScreen() {
   const { unlock, recoverWithPhrase, error, clearError } = useVault();
 
-  const [mode, setMode] = useState<"unlock" | "recover">("unlock");
+  const [mode, setMode] = useState<Mode>("unlock");
   const [passphrase, setPassphrase] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -63,11 +86,36 @@ export function LockScreen() {
 
   return (
     <div className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center px-5 py-8 sm:py-12">
-      <Card className="p-5 sm:p-8">
+      {/* Recovery is promoted from a footnote to a peer of unlocking. It is
+          the documented answer to a forgotten passphrase, and burying it under
+          the failing field is the moment people conclude they are locked out. */}
+      <Segmented
+        name="lock"
+        label="Ways to open this vault"
+        fill
+        items={[
+          { id: "unlock", label: "Passphrase", icon: Lock },
+          { id: "recover", label: "Recovery phrase", icon: KeyRound },
+        ]}
+        value={mode}
+        onChange={(next: Mode) => {
+          setMode(next);
+          clearError();
+          setRecoveryError(null);
+        }}
+        className="mb-4"
+      />
+
+      <Card
+        className="p-5 sm:p-8"
+        id={segmentedIds("lock", mode).panelId}
+        role="tabpanel"
+        aria-labelledby={segmentedIds("lock", mode).tabId}
+      >
         {mode === "unlock" ? (
           <form onSubmit={submitUnlock} className="space-y-6">
             <div className="space-y-3">
-              <div className="grid size-10 place-items-center rounded-[var(--radius-sm)] border border-line bg-surface">
+              <div className="grid size-10 place-items-center rounded-[var(--radius)] border border-line bg-surface raised">
                 <Lock className="size-4" aria-hidden />
               </div>
               <div className="space-y-1.5">
@@ -91,20 +139,11 @@ export function LockScreen() {
               error={error}
             />
 
+            {busy ? <DerivingNotice /> : null}
+
             <Button type="submit" size="lg" className="w-full" loading={busy} disabled={!passphrase}>
               Unlock
             </Button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setMode("recover");
-                clearError();
-              }}
-              className="w-full text-center text-[0.8125rem] text-ink-muted underline underline-offset-4 transition-colors hover:text-ink"
-            >
-              Use recovery phrase instead
-            </button>
           </form>
         ) : (
           <form onSubmit={submitRecovery} className="space-y-6">
@@ -156,6 +195,8 @@ export function LockScreen() {
               </Notice>
             ) : null}
 
+            {busy ? <DerivingNotice /> : null}
+
             <Button
               type="submit"
               size="lg"
@@ -165,17 +206,6 @@ export function LockScreen() {
             >
               Recover vault
             </Button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setMode("unlock");
-                setRecoveryError(null);
-              }}
-              className="w-full text-center text-[0.8125rem] text-ink-muted underline underline-offset-4 transition-colors hover:text-ink"
-            >
-              Back to passphrase
-            </button>
           </form>
         )}
       </Card>

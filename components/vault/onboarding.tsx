@@ -14,6 +14,7 @@ import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input, PasswordInput } from "@/components/ui/input";
+import { PixelLoader } from "@/components/ui/loader";
 import { Card, Notice } from "@/components/ui/primitives";
 import { createRecoveryPhrase } from "@/lib/crypto/mnemonic";
 import { estimateStrength } from "@/lib/crypto/password";
@@ -126,18 +127,23 @@ export function Onboarding() {
 
             <div className="relative">
               <ol
+                // Remounted on reveal so the words arrive in sequence rather
+                // than appearing all at once behind a lifting blur — the
+                // ordering is the thing that has to be copied correctly.
+                key={revealed ? "revealed" : "hidden"}
                 className={cn(
-                  "grid grid-cols-2 gap-px overflow-hidden rounded-[var(--radius-sm)] border border-line bg-line sm:grid-cols-3",
-                  !revealed && "blur-sm select-none",
+                  "grid grid-cols-2 gap-px overflow-hidden rounded-[var(--radius)] border border-line bg-line raised sm:grid-cols-3",
+                  revealed ? "stagger" : "blur-sm select-none",
                 )}
                 aria-hidden={!revealed}
               >
                 {words.map((word, index) => (
                   <li
                     key={`${index}-${word}`}
+                    style={{ "--stagger-index": index } as React.CSSProperties}
                     className="flex items-baseline gap-2 bg-elevated px-3 py-2.5"
                   >
-                    <span className="w-5 shrink-0 text-right font-mono text-[0.6875rem] text-ink-subtle">
+                    <span className="w-5 shrink-0 text-right font-mono text-[0.6875rem] tabular-nums text-ink-subtle">
                       {index + 1}
                     </span>
                     <span className="font-mono text-[0.8125rem]">{word}</span>
@@ -149,9 +155,9 @@ export function Onboarding() {
                 <button
                   type="button"
                   onClick={() => setRevealed(true)}
-                  className="absolute inset-0 grid place-items-center rounded-[var(--radius-sm)] bg-canvas/40"
+                  className="absolute inset-0 grid place-items-center rounded-[var(--radius)] bg-canvas/40"
                 >
-                  <span className="inline-flex items-center gap-2 rounded-full border border-line bg-elevated px-4 py-2 text-[0.8125rem] font-medium">
+                  <span className="inline-flex items-center gap-2 rounded-full border border-line bg-elevated px-4 py-2 text-[0.8125rem] font-medium raised-float">
                     <Eye className="size-4" aria-hidden />
                     Tap to reveal
                   </span>
@@ -300,6 +306,16 @@ export function Onboarding() {
               </Notice>
             ) : null}
 
+            {submitting ? (
+              <div className="animate-fade flex items-center gap-3 rounded-[var(--radius-sm)] border border-line bg-surface px-3 py-2.5">
+                <PixelLoader className="shrink-0" />
+                <p className="text-[0.8125rem] leading-relaxed text-ink-muted" role="status">
+                  Deriving your keys with Argon2id and sealing the vault. This happens
+                  entirely in this tab.
+                </p>
+              </div>
+            ) : null}
+
             <div className="flex gap-2">
               <Button variant="ghost" onClick={() => setStep("verify")} disabled={submitting}>
                 <ArrowLeft className="size-4" aria-hidden />
@@ -321,21 +337,51 @@ export function Onboarding() {
   );
 }
 
+const STEPS: { id: Step; label: string }[] = [
+  { id: "intro", label: "Brief" },
+  { id: "phrase", label: "Phrase" },
+  { id: "verify", label: "Verify" },
+  { id: "passphrase", label: "Passphrase" },
+];
+
+/**
+ * Progress with the destinations named.
+ *
+ * Four anonymous bars say how far along you are but not what is still coming,
+ * and this particular flow has a step people must prepare for — writing down
+ * 24 words. Naming the stages up front is the difference between reaching
+ * that screen ready and reaching it looking for a pen.
+ */
 function StepIndicator({ step }: { step: Step }) {
-  const steps: Step[] = ["intro", "phrase", "verify", "passphrase"];
-  const current = steps.indexOf(step);
+  const current = STEPS.findIndex((item) => item.id === step);
 
   return (
-    <div className="flex items-center gap-2" aria-label={`Step ${current + 1} of ${steps.length}`}>
-      {steps.map((item, index) => (
-        <span
-          key={item}
-          className={cn(
-            "h-0.5 flex-1 rounded-full transition-colors duration-300",
-            index <= current ? "bg-ink" : "bg-line",
-          )}
-        />
-      ))}
+    <div aria-label={`Step ${current + 1} of ${STEPS.length}`}>
+      <ol className="flex items-center gap-2">
+        {STEPS.map((item, index) => {
+          const done = index < current;
+          const active = index === current;
+
+          return (
+            <li key={item.id} className="flex-1" aria-current={active ? "step" : undefined}>
+              <span
+                className={cn(
+                  "block h-0.5 rounded-full transition-colors duration-300",
+                  done || active ? "bg-ink" : "bg-line",
+                )}
+              />
+              <span
+                className={cn(
+                  "mt-2 block text-[0.6875rem] font-mono uppercase tracking-wide transition-colors",
+                  active ? "text-ink" : "text-ink-subtle",
+                )}
+              >
+                {item.label}
+              </span>
+            </li>
+          );
+        })}
+      </ol>
     </div>
   );
 }

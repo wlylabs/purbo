@@ -2,6 +2,7 @@ import { Check, Lock } from "lucide-react";
 
 import { AuthButton } from "@/components/auth-button";
 import { Badge } from "@/components/ui/primitives";
+import { StatusPill } from "@/components/ui/status";
 
 /** Static, non-interactive preview of the vault. Purely decorative. */
 function VaultPreview() {
@@ -15,7 +16,7 @@ function VaultPreview() {
   return (
     <div
       aria-hidden
-      className="rounded-[var(--radius-lg)] border border-line bg-elevated overflow-hidden select-none"
+      className="select-none overflow-hidden rounded-[var(--radius-lg)] border border-line bg-elevated raised-float"
     >
       <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-3">
         <div className="flex items-center gap-2">
@@ -23,15 +24,18 @@ function VaultPreview() {
           <span className="text-[0.8125rem] font-medium">Vault</span>
           <span className="text-xs text-ink-subtle">4 items</span>
         </div>
-        <div className="flex items-center gap-1.5">
-          <span className="size-1.5 rounded-full bg-positive" />
-          <span className="text-[0.6875rem] text-ink-subtle font-mono">SYNCED</span>
-        </div>
+        <StatusPill tone="positive" label="Synced" detail="2m" />
       </div>
 
-      <div className="divide-line">
-        {rows.map((row) => (
-          <div key={row.name} className="flex items-center gap-3 px-4 py-3">
+      {/* The same staged reveal the real list uses, so the preview behaves
+          like the product rather than being a still of it. */}
+      <div className="stagger divide-line">
+        {rows.map((row, index) => (
+          <div
+            key={row.name}
+            style={{ "--stagger-index": index + 2 } as React.CSSProperties}
+            className="flex items-center gap-3 px-4 py-3"
+          >
             <div className="grid size-8 shrink-0 place-items-center rounded-[var(--radius-sm)] border border-line bg-surface text-[0.6875rem] font-medium text-ink-muted">
               {row.name.slice(0, 2).toUpperCase()}
             </div>
@@ -47,9 +51,7 @@ function VaultPreview() {
       </div>
 
       <div className="border-t border-line bg-surface px-4 py-2.5">
-        <p className="font-mono text-[0.6875rem] text-ink-subtle">
-          AES-256-GCM · sealed on this device
-        </p>
+        <p className="text-meta">AES-256-GCM · sealed on this device</p>
       </div>
     </div>
   );
@@ -84,7 +86,7 @@ export function Hero({ configured }: { configured: boolean }) {
               <AuthButton configured={configured} size="lg" label="Create your wallet" />
               <a
                 href="#how"
-                className="inline-flex h-12 items-center justify-center rounded-[var(--radius)] border border-line px-6 text-[0.9375rem] font-medium text-ink transition-colors hover:border-line-strong hover:bg-surface"
+                className="inline-flex h-12 items-center justify-center rounded-[var(--radius)] border border-line bg-elevated raised px-6 text-[0.9375rem] font-medium text-ink transition-[background-color,border-color,transform] duration-150 hover:border-line-strong hover:bg-surface active:translate-y-px"
               >
                 See how it works
               </a>

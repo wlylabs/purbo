@@ -5,6 +5,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/primitives";
+import { Segmented, segmentedIds } from "@/components/ui/segmented";
+import { StatusPill } from "@/components/ui/status";
 import { BIP39_WORDLIST } from "@/lib/crypto/mnemonic";
 import {
   DEFAULT_GENERATOR_OPTIONS,
@@ -101,33 +103,38 @@ export function Generator({
               Uniform sampling from WebCrypto entropy
             </p>
           </div>
-          <span className="font-mono text-[0.6875rem] text-ink-subtle">{entropy} bits</span>
+          <StatusPill
+            tone={entropy >= 80 ? "positive" : entropy >= 60 ? "caution" : "critical"}
+            label={`${entropy} bits`}
+            title="Entropy of the generator's settings, before any strength heuristics"
+          />
         </header>
       ) : null}
 
       <div className={cn("space-y-5", compact ? "" : "p-5")}>
-        <div className="inline-flex w-full rounded-[var(--radius-sm)] border border-line p-0.5">
-          {(["password", "passphrase"] as const).map((option) => (
-            <button
-              key={option}
-              type="button"
-              onClick={() => setMode(option)}
-              aria-pressed={mode === option}
-              className={cn(
-                "flex-1 rounded-[calc(var(--radius-sm)-2px)] px-3 py-1.5 text-[0.8125rem] font-medium capitalize transition-colors",
-                mode === option
-                  ? "bg-invert-bg text-invert-fg"
-                  : "text-ink-muted hover:text-ink",
-              )}
-            >
-              {option}
-            </button>
-          ))}
-        </div>
+        <Segmented
+          name="generator"
+          label="Generator mode"
+          fill
+          items={[
+            { id: "password", label: "Password" },
+            { id: "passphrase", label: "Passphrase" },
+          ]}
+          value={mode}
+          onChange={setMode}
+        />
 
-        <div className="rounded-[var(--radius-sm)] border border-line bg-surface p-3">
+        <div
+          id={segmentedIds("generator", mode).panelId}
+          role="tabpanel"
+          aria-labelledby={segmentedIds("generator", mode).tabId}
+          className="rounded-[var(--radius)] border border-line bg-surface p-3.5"
+        >
           <output
-            className="block break-all font-mono text-[0.9375rem] leading-relaxed text-ink"
+            // Keyed on the value so a regenerate reads as a new result
+            // arriving rather than characters silently mutating in place.
+            key={value}
+            className="animate-fade block break-all font-mono text-[0.9375rem] leading-relaxed text-ink"
             aria-live="polite"
           >
             {value || "—"}
@@ -190,10 +197,11 @@ export function Generator({
                   onClick={() => toggle(key)}
                   aria-pressed={Boolean(options[key])}
                   className={cn(
-                    "rounded-[var(--radius-sm)] border px-3 py-1.5 font-mono text-xs transition-colors",
+                    "rounded-[var(--radius-sm)] border px-3 py-1.5 font-mono text-xs",
+                    "transition-[background-color,border-color,color,transform] duration-150 active:translate-y-px",
                     options[key]
-                      ? "border-ink bg-invert-bg text-invert-fg"
-                      : "border-line text-ink-subtle hover:border-line-strong hover:text-ink",
+                      ? "border-transparent bg-invert-bg text-invert-fg raised"
+                      : "border-line bg-elevated text-ink-subtle raised hover:border-line-strong hover:text-ink",
                   )}
                 >
                   {label}
