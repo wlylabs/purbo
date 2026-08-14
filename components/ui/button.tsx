@@ -10,9 +10,9 @@ type Size = "sm" | "md" | "lg" | "icon";
 
 const VARIANTS: Record<Variant, string> = {
   primary:
-    "bg-invert-bg text-invert-fg border border-transparent hover:opacity-90 active:opacity-80",
+    "bg-invert-bg text-invert-fg border border-transparent raised hover:opacity-90 active:opacity-80",
   secondary:
-    "bg-elevated text-ink border border-line hover:border-line-strong hover:bg-surface",
+    "bg-elevated text-ink border border-line raised hover:border-line-strong hover:bg-surface",
   ghost: "bg-transparent text-ink-muted border border-transparent hover:bg-surface hover:text-ink",
   danger:
     "bg-transparent text-critical border border-critical/30 hover:bg-critical/10 hover:border-critical/50",
@@ -41,7 +41,10 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       disabled={disabled || loading}
       className={cn(
         "inline-flex items-center justify-center font-medium whitespace-nowrap",
-        "transition-[opacity,background-color,border-color] duration-150",
+        "transition-[opacity,background-color,border-color,transform] duration-150",
+        // A 1px dip on press. Enough to feel like the control took the click
+        // on a touchscreen, where there is no hover state to confirm it.
+        "active:translate-y-px",
         "disabled:pointer-events-none disabled:opacity-45",
         VARIANTS[variant],
         SIZES[size],

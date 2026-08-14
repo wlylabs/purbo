@@ -27,7 +27,7 @@ export function InstallBanner() {
 
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
-      <div className="animate-in-up pointer-events-auto flex w-full max-w-md items-center gap-3 rounded-[var(--radius-lg)] border border-line bg-elevated p-3 shadow-sm">
+      <div className="animate-in-up raised-modal pointer-events-auto flex w-full max-w-md items-center gap-3 rounded-[var(--radius-lg)] border border-line bg-elevated p-3">
         <div className="grid size-9 shrink-0 place-items-center rounded-[var(--radius-sm)] bg-invert-bg text-invert-fg">
           <Logo className="size-5" />
         </div>

@@ -45,6 +45,8 @@ interface VaultContextValue {
   error: string | null;
   syncState: SyncState;
   syncMessage: string | null;
+  /** When the server last confirmed a read or write, for the header's clock. */
+  lastSyncedAt: number | null;
   /** Ids of records that failed authentication and could not be decrypted. */
   corrupted: string[];
 
@@ -80,6 +82,7 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [syncState, setSyncState] = useState<SyncState>("idle");
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
   const [corrupted, setCorrupted] = useState<string[]>([]);
   const [autoLockMinutes, setAutoLockMinutesState] = useState(DEFAULT_AUTO_LOCK_MINUTES);
 
@@ -103,6 +106,13 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
     window.localStorage.setItem(AUTO_LOCK_STORAGE_KEY, String(minutes));
   }, []);
 
+  /** Records a confirmed round-trip to the server. */
+  const markSynced = useCallback(() => {
+    setSyncState("idle");
+    setSyncMessage(null);
+    setLastSyncedAt(Date.now());
+  }, []);
+
   const lock = useCallback(() => {
     keyringRef.current = null;
     setItems([]);
@@ -118,6 +128,7 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
     revisionRef.current = 0;
     setItems([]);
     setCorrupted([]);
+    setLastSyncedAt(null);
     setError(null);
     setStatus("loading");
   }, []);
@@ -138,8 +149,7 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
 
     try {
       remote = await fetchRemoteVault();
-      setSyncState("idle");
-      setSyncMessage(null);
+      markSynced();
     } catch (err) {
       setSyncState("offline");
       setSyncMessage(
@@ -168,7 +178,7 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
     if (remote && (!local || remote.revision > local.revision)) {
       await writeLocalVault(id, remote);
     }
-  }, []);
+  }, [markSynced]);
 
   useEffect(() => {
     if (!ready) return;
@@ -207,8 +217,7 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
       setSyncState("syncing");
       try {
         await pushRemoteVault({ envelope, items: nextEncrypted, revision });
-        setSyncState("idle");
-        setSyncMessage(null);
+        markSynced();
       } catch (err) {
         if (err instanceof RevisionConflictError) {
           // Another device wrote while we were editing. Re-base onto the
@@ -221,8 +230,7 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
               revision: err.currentRevision + 1,
             });
             revisionRef.current = err.currentRevision + 1;
-            setSyncState("idle");
-            setSyncMessage(null);
+            markSynced();
             return;
           } catch {
             setSyncState("error");
@@ -238,7 +246,7 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
         );
       }
     },
-    [userId],
+    [userId, markSynced],
   );
 
   const createVault = useCallback(
@@ -398,6 +406,7 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
       error,
       syncState,
       syncMessage,
+      lastSyncedAt,
       corrupted,
       createVault,
       unlock,
@@ -416,6 +425,7 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
       error,
       syncState,
       syncMessage,
+      lastSyncedAt,
       corrupted,
       createVault,
       unlock,

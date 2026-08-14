@@ -1,13 +1,14 @@
 "use client";
 
 import { usePrivy } from "@privy-io/react-auth";
-import { Loader2, ShieldAlert } from "lucide-react";
+import { ShieldAlert } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
 import { Wordmark } from "@/components/logo";
 import { Button } from "@/components/ui/button";
+import { WaitState } from "@/components/ui/loader";
 import { Card, Notice } from "@/components/ui/primitives";
 import { AppHeader } from "@/components/vault/app-header";
 import { Dashboard } from "@/components/vault/dashboard";
@@ -61,15 +62,12 @@ function NotConfigured() {
   );
 }
 
-function LoadingState({ message }: { message: string }) {
+function LoadingState({ message, hint }: { message: string; hint?: string }) {
   return (
     <Centered>
-      <div className="flex flex-col items-center gap-4 text-center">
+      <div className="flex flex-col items-center gap-7">
         <Wordmark />
-        <Loader2 className="size-5 animate-spin text-ink-subtle" aria-hidden />
-        <p className="text-[0.8125rem] text-ink-muted" role="status">
-          {message}
-        </p>
+        <WaitState message={message} hint={hint} />
       </div>
     </Centered>
   );
@@ -120,7 +118,14 @@ function AuthGate() {
 function VaultShell() {
   const { status } = useVault();
 
-  if (status === "loading") return <LoadingState message="Loading your encrypted vault…" />;
+  if (status === "loading") {
+    return (
+      <LoadingState
+        message="Loading your encrypted vault…"
+        hint="Fetching ciphertext. Nothing is decrypted until you unlock."
+      />
+    );
+  }
 
   return (
     <div className="flex min-h-dvh flex-col">

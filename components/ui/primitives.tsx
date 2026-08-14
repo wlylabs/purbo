@@ -7,13 +7,18 @@ import { cn } from "@/lib/utils";
 import { Button } from "./button";
 
 export function Card({
+  flat = false,
   className,
   ...props
-}: React.HTMLAttributes<HTMLDivElement>) {
+}: React.HTMLAttributes<HTMLDivElement> & {
+  /** Drops the lift, for cards nested inside another raised surface. */
+  flat?: boolean;
+}) {
   return (
     <div
       className={cn(
         "bg-elevated border border-line rounded-[var(--radius-lg)]",
+        !flat && "raised",
         className,
       )}
       {...props}
@@ -116,17 +121,19 @@ export function Modal({
       className={cn(
         "m-auto w-[calc(100vw-2rem)] max-w-lg bg-transparent p-0 text-ink",
         "backdrop:bg-overlay backdrop:backdrop-blur-[2px]",
-        "open:animate-fade",
+        "open:animate-in-up",
       )}
     >
       <div
         className={cn(
-          "bg-elevated border border-line rounded-[var(--radius-lg)] overflow-hidden",
+          "bg-elevated border border-line rounded-[var(--radius-lg)] overflow-hidden raised-modal",
           "max-h-[85vh] flex flex-col",
           className,
         )}
       >
-        <header className="flex items-start justify-between gap-4 px-5 py-4 border-b border-line shrink-0">
+        {/* The header stays put while the body scrolls, so the title of a long
+            entry is still on screen when the delete control is reached. */}
+        <header className="flex items-start justify-between gap-4 px-5 py-4 border-b border-line shrink-0 bg-elevated">
           <div className="space-y-1">
             <h2 id="modal-title" className="text-[0.9375rem] font-semibold tracking-tight">
               {title}

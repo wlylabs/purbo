@@ -7,30 +7,51 @@ import { useEffect, useRef, useState } from "react";
 import { Wordmark } from "@/components/logo";
 import { ThemeToggle } from "@/components/theme";
 import { Button } from "@/components/ui/button";
+import {
+  StatusDot,
+  StatusPill,
+  formatElapsed,
+  useElapsed,
+  type Tone,
+} from "@/components/ui/status";
 import { useVault, type SyncState } from "@/lib/vault/provider";
 import { cn } from "@/lib/utils";
 
-const SYNC_LABELS: Record<SyncState, { text: string; dot: string }> = {
-  idle: { text: "Synced", dot: "bg-positive" },
-  syncing: { text: "Syncing", dot: "bg-caution" },
-  offline: { text: "Offline", dot: "bg-caution" },
-  error: { text: "Conflict", dot: "bg-critical" },
+const SYNC_LABELS: Record<SyncState, { text: string; tone: Tone; live: boolean }> = {
+  idle: { text: "Synced", tone: "positive", live: false },
+  syncing: { text: "Syncing", tone: "info", live: true },
+  offline: { text: "Offline", tone: "caution", live: false },
+  error: { text: "Conflict", tone: "critical", live: false },
 };
 
+/**
+ * Sync state with the age of the last confirmed round-trip.
+ *
+ * "Synced" on its own is not falsifiable — it looks the same one second and
+ * one hour after the connection dropped. The clock is what makes the claim
+ * checkable, so it is only shown for states that actually reached the server.
+ */
 function SyncBadge() {
-  const { syncState, syncMessage } = useVault();
+  const { syncState, syncMessage, lastSyncedAt } = useVault();
   const label = SYNC_LABELS[syncState];
+  const elapsed = useElapsed(lastSyncedAt);
+
+  const detail =
+    syncState === "idle" && elapsed !== null
+      ? elapsed < 5
+        ? "now"
+        : formatElapsed(elapsed)
+      : null;
 
   return (
-    <span
-      title={syncMessage ?? undefined}
-      className="hidden items-center gap-1.5 rounded-full border border-line px-2.5 py-1 sm:inline-flex"
-    >
-      <span className={cn("size-1.5 rounded-full", label.dot)} />
-      <span className="font-mono text-[0.6875rem] uppercase tracking-wide text-ink-subtle">
-        {label.text}
-      </span>
-    </span>
+    <StatusPill
+      className="hidden sm:inline-flex"
+      tone={label.tone}
+      live={label.live}
+      label={label.text}
+      detail={detail}
+      title={syncMessage ?? (detail ? `Last confirmed by the server ${detail} ago` : undefined)}
+    />
   );
 }
 
@@ -78,7 +99,7 @@ function AccountMenu() {
       {open ? (
         <div
           role="menu"
-          className="absolute right-0 top-full z-50 mt-2 w-56 overflow-hidden rounded-[var(--radius)] border border-line bg-elevated animate-fade"
+          className="absolute right-0 top-full z-50 mt-2 w-56 overflow-hidden rounded-[var(--radius)] border border-line bg-elevated raised-float animate-in-up"
         >
           <div className="border-b border-line px-3 py-2.5">
             <p className="truncate text-[0.8125rem] font-medium">{identity}</p>
@@ -107,12 +128,22 @@ function AccountMenu() {
 }
 
 export function AppHeader() {
-  const { status, lock } = useVault();
+  const { status, lock, syncState } = useVault();
+  const sync = SYNC_LABELS[syncState];
 
   return (
     <header className="pt-safe sticky top-0 z-30 border-b border-line bg-canvas/85 backdrop-blur-md">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-5 sm:px-6">
-        <Wordmark />
+        <div className="flex items-center gap-2.5">
+          <Wordmark />
+          {/* The full pill does not fit on a phone; the dot alone still
+              distinguishes settled from in-flight, which is the part that
+              changes without the user doing anything. */}
+          <span className="sm:hidden" title={sync.text}>
+            <StatusDot tone={sync.tone} live={sync.live} />
+            <span className="sr-only">{sync.text}</span>
+          </span>
+        </div>
 
         <div className="flex items-center gap-2 sm:gap-3">
           <SyncBadge />

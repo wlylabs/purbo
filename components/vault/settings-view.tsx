@@ -4,11 +4,13 @@ import { AlertTriangle, Download } from "lucide-react";
 import { useState } from "react";
 
 import { InstallSection } from "@/components/pwa/install-prompt";
+import { ApprovalCard } from "@/components/ui/approval";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card, Notice, Separator } from "@/components/ui/primitives";
+import { Card, Notice } from "@/components/ui/primitives";
+import { Trace, TraceStep } from "@/components/ui/trace";
 import { DEFAULT_KDF_PARAMS } from "@/lib/crypto/kdf";
 import { useVault } from "@/lib/vault/provider";
+import { cn } from "@/lib/utils";
 
 const AUTO_LOCK_CHOICES = [
   { minutes: 1, label: "1 min" },
@@ -22,7 +24,7 @@ export function SettingsView() {
   const { autoLockMinutes, setAutoLockMinutes, items, destroyVault, syncState, syncMessage } =
     useVault();
 
-  const [confirmText, setConfirmText] = useState("");
+  const [confirmingDestroy, setConfirmingDestroy] = useState(false);
   const [destroying, setDestroying] = useState(false);
 
   /**
@@ -62,18 +64,22 @@ export function SettingsView() {
           Locking clears the decryption key from memory. Anyone who reaches the tab afterwards
           needs the passphrase again.
         </p>
-        <div className="mt-4 flex flex-wrap gap-2">
+        <div role="radiogroup" aria-label="Auto-lock delay" className="mt-4 flex flex-wrap gap-2">
           {AUTO_LOCK_CHOICES.map((choice) => (
             <button
               key={choice.minutes}
               type="button"
+              role="radio"
+              aria-checked={autoLockMinutes === choice.minutes}
+              tabIndex={autoLockMinutes === choice.minutes ? 0 : -1}
               onClick={() => setAutoLockMinutes(choice.minutes)}
-              aria-pressed={autoLockMinutes === choice.minutes}
-              className={`rounded-[var(--radius-sm)] border px-3 py-1.5 text-[0.8125rem] font-medium transition-colors ${
+              className={cn(
+                "rounded-[var(--radius-sm)] border px-3 py-1.5 text-[0.8125rem] font-medium",
+                "transition-[background-color,border-color,color,transform] duration-150 active:translate-y-px",
                 autoLockMinutes === choice.minutes
-                  ? "border-ink bg-invert-bg text-invert-fg"
-                  : "border-line text-ink-muted hover:border-line-strong hover:text-ink"
-              }`}
+                  ? "border-transparent bg-invert-bg text-invert-fg raised"
+                  : "border-line bg-elevated text-ink-muted raised hover:border-line-strong hover:text-ink",
+              )}
             >
               {choice.label}
             </button>
@@ -86,26 +92,80 @@ export function SettingsView() {
         ) : null}
       </Card>
 
-      <Card className="p-5 sm:p-6">
-        <h2 className="text-[0.9375rem] font-semibold tracking-tight">Encryption</h2>
-        <dl className="mt-4 space-y-3 text-[0.8125rem]">
-          {[
-            ["Entry cipher", "AES-256-GCM, 96-bit IV, context-bound"],
-            [
-              "Passphrase KDF",
-              `Argon2id · ${DEFAULT_KDF_PARAMS.memoryKiB / 1024} MiB · ${DEFAULT_KDF_PARAMS.iterations} passes`,
-            ],
-            ["Key derivation", "HKDF-SHA-256, domain-separated"],
-            ["Recovery", "BIP39, 24 words, 256-bit entropy"],
-            ["Sync", syncMessage ?? `${syncState} — ciphertext only`],
-          ].map(([term, detail]) => (
-            <div key={term} className="flex flex-wrap justify-between gap-2 border-b border-line pb-3 last:border-0 last:pb-0">
-              <dt className="text-ink-muted">{term}</dt>
-              <dd className="font-mono text-[0.75rem] text-ink">{detail}</dd>
-            </div>
-          ))}
-        </dl>
-      </Card>
+      {/*
+        The key chain, shown rather than listed.
+        A table of algorithm names says which primitives are used; it does not
+        say what reaches the server. Laying the same facts out as a sequence
+        makes the shape of the guarantee legible — two independent entry
+        points, one root key, and a boundary the plaintext never crosses.
+      */}
+      <section>
+        <h2 className="text-[0.9375rem] font-semibold tracking-tight">Key chain</h2>
+        <p className="mt-1 text-[0.8125rem] leading-relaxed text-ink-muted">
+          How this vault gets from something you know to something the server cannot read.
+          Open any step for the parameters.
+        </p>
+
+        <Trace className="mt-4">
+          <TraceStep
+            title="Recovery phrase"
+            state="done"
+            meta="BIP39 · 24 words"
+            summary="256 bits of entropy generated in this browser."
+          >
+            The words are a human-readable encoding of the seed, not a password. They were
+            drawn from WebCrypto randomness on your device and have never been transmitted,
+            which is also why nobody can re-send them to you.
+          </TraceStep>
+
+          <TraceStep
+            title="Passphrase"
+            state="done"
+            meta={`Argon2id · ${DEFAULT_KDF_PARAMS.memoryKiB / 1024} MiB · ${DEFAULT_KDF_PARAMS.iterations} passes`}
+            summary="The everyday path to the same root key."
+          >
+            Memory-hardness is the point: an attacker guessing offline pays{" "}
+            {DEFAULT_KDF_PARAMS.memoryKiB / 1024} MiB of RAM per attempt, which is what
+            removes the advantage GPU and ASIC cracking rigs have over a laptop. The result
+            unwraps the stored root key; it is never itself the key.
+          </TraceStep>
+
+          <TraceStep
+            title="Root key"
+            state="done"
+            meta="HKDF-SHA-256"
+            summary="Reachable from either the phrase or the passphrase."
+          >
+            Domain-separated with distinct labels, so the key that wraps and the key that
+            encrypts are different keys derived from one root. Losing the passphrase costs
+            you nothing while you still hold the phrase.
+          </TraceStep>
+
+          <TraceStep
+            title="Entries"
+            state="done"
+            meta="AES-256-GCM · 96-bit IV"
+            summary="Name, username, URL and notes are all inside the ciphertext."
+          >
+            Each record is sealed with associated data binding it to your account and its own
+            id, so moving a blob between records or between users fails to decrypt rather
+            than succeeding quietly.
+          </TraceStep>
+
+          <TraceStep
+            title="Sync"
+            state={syncState === "error" ? "failed" : syncState === "syncing" ? "active" : "done"}
+            meta={syncState === "idle" ? "ciphertext only" : syncState}
+            summary={syncMessage ?? "The server holds opaque blobs and a revision counter."}
+            last
+          >
+            What leaves this device: the wrapped root key with its public KDF parameters, the
+            sealed entries, and a revision number used to resolve two devices writing at
+            once. Your account id is stored as a truncated SHA-256 hash rather than the raw
+            identifier.
+          </TraceStep>
+        </Trace>
+      </section>
 
       <Card className="p-5 sm:p-6">
         <InstallSection />
@@ -133,34 +193,38 @@ export function SettingsView() {
           cannot bring it back — there will be nothing left to decrypt.
         </p>
 
-        <Separator className="my-5" />
-
-        <Input
-          label="Type DELETE to confirm"
-          value={confirmText}
-          onChange={(event) => setConfirmText(event.target.value)}
-          placeholder="DELETE"
-          autoComplete="off"
-          className="font-mono"
-        />
-
-        <Button
-          variant="danger"
-          className="mt-4"
-          disabled={confirmText !== "DELETE"}
-          loading={destroying}
-          onClick={async () => {
-            setDestroying(true);
-            try {
-              await destroyVault();
-            } finally {
-              setDestroying(false);
-              setConfirmText("");
-            }
-          }}
-        >
-          Delete vault permanently
-        </Button>
+        {/* The gate is only raised once the user has asked for it. Leaving a
+            typed confirmation field permanently on screen trains people to
+            fill it in, which is the opposite of what it is for. */}
+        {confirmingDestroy ? (
+          <ApprovalCard
+            className="mt-5"
+            title="Irreversible"
+            question="Erase this vault and everything in it?"
+            consequences={[
+              `All ${items.length} ${items.length === 1 ? "entry is" : "entries are"} deleted from the server and from this device.`,
+              "Your 24-word recovery phrase will no longer restore anything — it decrypts data that will not exist.",
+              "Nobody, including us, can undo this. There is no backup we can read.",
+            ]}
+            confirmWord="DELETE"
+            confirmLabel="Delete vault permanently"
+            loading={destroying}
+            onCancel={() => setConfirmingDestroy(false)}
+            onConfirm={async () => {
+              setDestroying(true);
+              try {
+                await destroyVault();
+              } finally {
+                setDestroying(false);
+                setConfirmingDestroy(false);
+              }
+            }}
+          />
+        ) : (
+          <Button variant="danger" className="mt-5" onClick={() => setConfirmingDestroy(true)}>
+            Delete this vault
+          </Button>
+        )}
       </Card>
     </div>
   );
