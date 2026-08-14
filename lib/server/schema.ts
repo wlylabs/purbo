@@ -41,6 +41,8 @@ export const keyEnvelopeSchema = z
     kdf: kdfParams,
     wrapped: sealedBox,
     verifier: sealedBox,
+    /** The account's Ed25519 secret, sealed under a subkey of the root key. */
+    auth: sealedBox,
     rootSalt: base64Url(128),
     createdAt: z.number().int().nonnegative(),
   })
@@ -82,3 +84,51 @@ export type PutVaultBody = z.infer<typeof putVaultSchema>;
 
 /** Hard cap on request size, checked before parsing. */
 export const MAX_BODY_BYTES = 8 * 1024 * 1024;
+
+// ------------------------------------------------------------------- auth
+
+/** 32 raw bytes -> 43 base64url characters; 64 -> 86. Fixed lengths, so pin them. */
+const fixedBase64Url = (bytes: number) =>
+  z
+    .string()
+    .length(Math.ceil((bytes * 4) / 3))
+    .regex(BASE64URL, "expected base64url");
+
+export const challengeRequestSchema = z
+  .object({ publicKey: fixedBase64Url(32) })
+  .strict();
+
+export const sessionRequestSchema = z
+  .object({
+    publicKey: fixedBase64Url(32),
+    nonce: fixedBase64Url(32),
+    signature: fixedBase64Url(64),
+  })
+  .strict();
+
+/**
+ * WebAuthn credential ids are opaque and can be up to 1023 bytes; anything
+ * larger than that base64url-encoded is not a credential id.
+ */
+const credentialId = base64Url(1400);
+
+/**
+ * A passkey bootstrap record as the client submits it.
+ *
+ * `sealed` holds the root key and the account's auth secret, encrypted under
+ * a key the authenticator derives (WebAuthn's PRF extension). The server
+ * stores it and hands it back to whoever presents the credential id — it can
+ * no more read this than it can read a vault.
+ */
+export const passkeyRecordSchema = z
+  .object({
+    credentialId,
+    rootSalt: base64Url(128),
+    sealed: sealedBox,
+  })
+  .strict();
+
+export const passkeyLookupSchema = z.object({ credentialId }).strict();
+
+/** Passkeys per account. A cap, so registration cannot be used as storage. */
+export const MAX_PASSKEYS = 10;

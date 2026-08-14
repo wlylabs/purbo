@@ -43,20 +43,20 @@ async function withStore<T>(
   }
 }
 
-export async function readLocalVault(userId: string): Promise<EncryptedVault | null> {
+export async function readLocalVault(accountId: string): Promise<EncryptedVault | null> {
   try {
-    return (await withStore("readonly", (store) => store.get(userId))) ?? null;
+    return (await withStore("readonly", (store) => store.get(accountId))) ?? null;
   } catch {
     return null;
   }
 }
 
 export async function writeLocalVault(
-  userId: string,
+  accountId: string,
   vault: EncryptedVault,
 ): Promise<void> {
   try {
-    await withStore("readwrite", (store) => store.put(vault, userId));
+    await withStore("readwrite", (store) => store.put(vault, accountId));
   } catch {
     // Private-browsing modes and storage-pressure evictions can refuse writes.
     // The remote copy remains authoritative, so this is a cache miss, not a
@@ -64,9 +64,44 @@ export async function writeLocalVault(
   }
 }
 
-export async function clearLocalVault(userId: string): Promise<void> {
+export async function clearLocalVault(accountId: string): Promise<void> {
   try {
-    await withStore("readwrite", (store) => store.delete(userId));
+    await withStore("readwrite", (store) => store.delete(accountId));
+  } catch {
+    /* nothing recoverable to do */
+  }
+}
+
+/**
+ * Which account this browser last opened.
+ *
+ * With no identity provider there is no session cookie to consult on load, so
+ * the app needs a local pointer to know whether to show a lock screen or a
+ * fresh-start screen. It is only an account id — a hash of a public key, not
+ * a credential — and holding it grants nothing: opening the vault it names
+ * still requires the passphrase, the phrase, or a passkey.
+ */
+const ACTIVE_ACCOUNT_KEY = "purbo:account";
+
+export function readActiveAccount(): string | null {
+  try {
+    return window.localStorage.getItem(ACTIVE_ACCOUNT_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function writeActiveAccount(accountId: string): void {
+  try {
+    window.localStorage.setItem(ACTIVE_ACCOUNT_KEY, accountId);
+  } catch {
+    /* storage disabled; the vault still works, it just starts fresh each visit */
+  }
+}
+
+export function clearActiveAccount(): void {
+  try {
+    window.localStorage.removeItem(ACTIVE_ACCOUNT_KEY);
   } catch {
     /* nothing recoverable to do */
   }

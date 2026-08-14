@@ -12,14 +12,6 @@ import { NextResponse, type NextRequest } from "next/server";
  * nonce to guess.
  */
 
-const PRIVY_ORIGINS = [
-  "https://auth.privy.io",
-  "https://*.privy.io",
-  "wss://*.privy.io",
-  "https://*.rpc.privy.systems",
-  "https://explorer-api.walletconnect.com",
-];
-
 function buildCsp(nonce: string, isDev: boolean): string {
   const directives: Record<string, string[]> = {
     "default-src": ["'self'"],
@@ -37,9 +29,11 @@ function buildCsp(nonce: string, isDev: boolean): string {
     "style-src": ["'self'", "'unsafe-inline'"],
     "img-src": ["'self'", "data:", "blob:", "https:"],
     "font-src": ["'self'", "data:"],
-    "connect-src": ["'self'", ...PRIVY_ORIGINS, ...(isDev ? ["ws:", "http://localhost:*"] : [])],
-    // Privy renders its login flow in an iframe.
-    "frame-src": ["'self'", "https://auth.privy.io", "https://*.privy.io"],
+    // Purbo talks to exactly one host: itself. With no identity provider,
+    // no analytics and no CDN, every third-party origin can simply be absent
+    // from this policy rather than allowlisted and trusted.
+    "connect-src": ["'self'", ...(isDev ? ["ws:", "http://localhost:*"] : [])],
+    "frame-src": ["'none'"],
     "worker-src": ["'self'", "blob:"],
     "manifest-src": ["'self'"],
     "object-src": ["'none'"],
@@ -76,9 +70,14 @@ export default function proxy(request: NextRequest) {
   response.headers.set("x-frame-options", "DENY");
   // No URL — not even the origin — leaks to sites the user opens from an entry.
   response.headers.set("referrer-policy", "no-referrer");
+  // WebAuthn is explicitly granted to this origin and nothing else: passkeys
+  // unwrap the root key, so the one thing that must never happen is an
+  // embedded frame being able to ask for an assertion on Purbo's behalf.
   response.headers.set(
     "permissions-policy",
-    "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()",
+    "camera=(), microphone=(), geolocation=(), payment=(), usb=(), " +
+      "interest-cohort=(), publickey-credentials-get=(self), " +
+      "publickey-credentials-create=(self)",
   );
   // Cross-origin isolation: blocks the classic XS-leak and Spectre-adjacent
   // read paths against a tab that holds decrypted secrets.

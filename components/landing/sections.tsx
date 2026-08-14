@@ -11,7 +11,7 @@ import {
   WifiOff,
 } from "lucide-react";
 
-import { AuthButton } from "@/components/auth-button";
+import { VaultLink } from "@/components/vault-link";
 import { Trace, TraceStep } from "@/components/ui/trace";
 
 function SectionHeader({
@@ -51,27 +51,28 @@ export function HowItWorks() {
         */}
         <Trace className="mt-8 max-w-3xl sm:mt-12">
           <TraceStep
-            title="Sign in with Privy"
+            title="Create your vault"
             state="done"
             meta="step 01"
-            summary="Email, Google, GitHub or an existing wallet."
-          >
-            Privy proves who you are and issues a short-lived session token that our API
-            verifies cryptographically on every request. It decides which encrypted blob
-            belongs to you — never what is inside it. No password of yours reaches Purbo, and
-            no key material reaches Privy.
-          </TraceStep>
-
-          <TraceStep
-            title="Create your wallet"
-            state="done"
-            meta="step 02"
             summary="A 24-word recovery phrase and a passphrase, both generated and used locally."
           >
             The phrase comes from WebCrypto randomness in your tab and is encoded with BIP39,
             the same standard a hardware wallet uses. Your passphrase is stretched with
             Argon2id at 64 MiB and wraps the resulting root key. Neither the phrase nor the
             passphrase is ever transmitted, which is exactly why neither can be reset for you.
+          </TraceStep>
+
+          <TraceStep
+            title="Your keys are your account"
+            state="done"
+            meta="step 02"
+            summary="No email, no password, no third-party sign-in."
+          >
+            A second branch of the same phrase derives an Ed25519 key pair. To reach your
+            vault, this device signs a nonce the server issues; your account id is a hash of
+            the public half. There is no identity provider in the loop and no credential to
+            phish — which also means the ability to sign in and the ability to decrypt are
+            one thing, not two that can come apart.
           </TraceStep>
 
           <TraceStep
@@ -108,6 +109,11 @@ export function Security() {
       icon: ScanLine,
       title: "Every ciphertext is context-bound",
       body: "Each entry is sealed with associated data tying it to your account and its own id. Moving a blob between records or between users makes decryption fail rather than succeed quietly.",
+    },
+    {
+      icon: Fingerprint,
+      title: "No identity provider to trust",
+      body: "Your recovery phrase derives the signing key that authenticates you, so nobody — including whoever runs the server — can mint a session for your account. There is no email to hijack and no OAuth token to steal.",
     },
     {
       icon: Clock,
@@ -181,8 +187,8 @@ export function Features() {
     },
     {
       icon: Fingerprint,
-      title: "Wallet-native recovery",
-      body: "A standard 24-word BIP39 phrase is the root of the vault. It restores everything on a new device without contacting support.",
+      title: "Passkeys that unwrap, not log in",
+      body: "Register a device biometric and it holds a sealed copy of your root key via WebAuthn's PRF extension. One touch opens the vault — and the recovery phrase still works if every device is lost.",
     },
     {
       icon: ShieldCheck,
@@ -223,11 +229,15 @@ export function Faq() {
   const items = [
     {
       q: "Do I need cryptocurrency to use Purbo?",
-      a: "No. Purbo borrows the wallet model — a recovery phrase you own, keys that never leave your device — but stores passwords, not funds. There is no chain, no gas and no token. If you sign in with an existing wallet, it is used purely as an identity.",
+      a: "No. Purbo borrows the wallet model — a recovery phrase you own, keys that never leave your device — but stores passwords, not funds. There is no chain, no gas, no token and no wallet to connect.",
+    },
+    {
+      q: "How do I sign in without an email or password?",
+      a: "Your recovery phrase derives a signing key as well as an encryption key. The server sends a one-time nonce, your browser signs it, and your account id is a hash of the matching public key. Nothing is sent that could be replayed, phished or reset — and on a device you have already set up, your passphrase or a passkey does the same job without typing 24 words.",
     },
     {
       q: "What exactly does the server store?",
-      a: "One record per account: the wrapped root key with its Argon2id parameters, an array of encrypted entries, and a revision counter. Account ids are stored as truncated SHA-256 hashes rather than raw identifiers. There is no plaintext field anywhere in that record.",
+      a: "One record per account: the wrapped root key with its Argon2id parameters, an array of encrypted entries, and a revision counter. The account it is filed under is a hash of your public key — no email, no username, no third-party id. There is no plaintext field anywhere in that record.",
     },
     {
       q: "What happens if I forget my passphrase?",
@@ -238,8 +248,8 @@ export function Faq() {
       a: "No, and this is deliberate. Neither secret is ever transmitted, so there is nothing on the server to recover from. Anyone offering to restore a zero-knowledge vault is either not zero-knowledge or not telling the truth.",
     },
     {
-      q: "Why Privy instead of a normal login?",
-      a: "It gives the wallet-style entry point — email, social or an existing wallet — without Purbo ever handling credentials. Privy issues a short-lived token that the API verifies cryptographically on every request; it decides who you are, never what you can decrypt.",
+      q: "What happens if I lose the device I registered a passkey on?",
+      a: "Nothing that matters. A passkey holds a sealed copy of your root key; it is a convenience layer over the same vault, not the vault itself. Your recovery phrase still restores everything on any device, and you can revoke every registered passkey from Settings — which deletes the sealed copies from the server.",
     },
     {
       q: "Is this audited?",
@@ -275,7 +285,7 @@ export function Faq() {
   );
 }
 
-export function CallToAction({ configured }: { configured: boolean }) {
+export function CallToAction() {
   return (
     <section className="border-b border-line">
       <div className="mx-auto max-w-6xl px-5 py-12 sm:px-6 sm:py-20 lg:py-28">
@@ -292,7 +302,7 @@ export function CallToAction({ configured }: { configured: boolean }) {
               words before you start.
             </p>
             <div className="mt-6 flex justify-center sm:mt-8">
-              <AuthButton configured={configured} size="lg" label="Create your wallet" />
+              <VaultLink size="lg" label="Create your vault" />
             </div>
           </div>
         </div>

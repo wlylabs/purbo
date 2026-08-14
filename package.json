@@ -14,8 +14,7 @@
     "test": "node --experimental-strip-types --no-warnings --import ./tests/register.mjs tests/crypto.test.ts"
   },
   "dependencies": {
-    "@privy-io/react-auth": "^3.37.0",
-    "@privy-io/server-auth": "^1.32.5",
+    "@noble/curves": "^2.3.0",
     "@scure/bip39": "^2.3.0",
     "@upstash/redis": "^1.38.2",
     "clsx": "^2.1.1",

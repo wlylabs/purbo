@@ -1,7 +1,6 @@
 "use client";
 
-import { usePrivy } from "@privy-io/react-auth";
-import { ChevronDown, Lock, LogOut } from "lucide-react";
+import { ChevronDown, Lock, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { Wordmark } from "@/components/logo";
@@ -55,9 +54,18 @@ function SyncBadge() {
   );
 }
 
+/**
+ * The account, such as it is.
+ *
+ * There is no email or username to show — the account *is* a key pair, and
+ * its id is a hash of the public half. Showing that hash is not decoration:
+ * it is the only way to tell which vault this browser is holding, and it is
+ * what two devices can be compared on to confirm they are the same account.
+ */
 function AccountMenu() {
-  const { user, logout } = usePrivy();
+  const { accountId, forgetDevice } = useVault();
   const [open, setOpen] = useState(false);
+  const [forgetting, setForgetting] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -76,12 +84,9 @@ function AccountMenu() {
     };
   }, [open]);
 
-  const wallet = user?.wallet?.address;
-  const identity =
-    user?.email?.address ??
-    user?.google?.email ??
-    user?.github?.username ??
-    (wallet ? `${wallet.slice(0, 6)}…${wallet.slice(-4)}` : "Account");
+  if (!accountId) return null;
+
+  const short = `${accountId.slice(0, 6)}…${accountId.slice(-4)}`;
 
   return (
     <div className="relative" ref={ref}>
@@ -92,35 +97,52 @@ function AccountMenu() {
         aria-haspopup="menu"
         className="flex items-center gap-2 rounded-[var(--radius-sm)] border border-line px-2.5 py-1.5 text-[0.8125rem] transition-colors hover:border-line-strong"
       >
-        <span className="max-w-32 truncate text-ink-muted">{identity}</span>
+        <span className="max-w-32 truncate font-mono text-[0.75rem] text-ink-muted">
+          {short}
+        </span>
         <ChevronDown className="size-3.5 text-ink-subtle" aria-hidden />
       </button>
 
       {open ? (
         <div
           role="menu"
-          className="absolute right-0 top-full z-50 mt-2 w-56 overflow-hidden rounded-[var(--radius)] border border-line bg-elevated raised-float animate-in-up"
+          className="absolute right-0 top-full z-50 mt-2 w-72 overflow-hidden rounded-[var(--radius)] border border-line bg-elevated raised-float animate-in-up"
         >
           <div className="border-b border-line px-3 py-2.5">
-            <p className="truncate text-[0.8125rem] font-medium">{identity}</p>
-            {wallet ? (
-              <p className="mt-0.5 truncate font-mono text-[0.6875rem] text-ink-subtle">
-                {wallet}
-              </p>
-            ) : null}
+            <p className="text-[0.8125rem] font-medium">Account</p>
+            <p className="mt-1 break-all font-mono text-[0.6875rem] leading-relaxed text-ink-subtle">
+              {accountId}
+            </p>
+            <p className="mt-2 text-[0.6875rem] leading-relaxed text-ink-subtle">
+              Derived from your recovery phrase. It identifies your vault to the
+              server and nothing else.
+            </p>
           </div>
+          {/* Not "sign out": there is no session anywhere to end. What this
+              does is delete the encrypted copy cached here, which is a real
+              and irreversible local action, so it is named for that. */}
           <button
             type="button"
             role="menuitem"
-            onClick={() => {
-              setOpen(false);
-              void logout();
+            disabled={forgetting}
+            onClick={async () => {
+              setForgetting(true);
+              try {
+                await forgetDevice();
+              } finally {
+                setForgetting(false);
+                setOpen(false);
+              }
             }}
-            className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[0.8125rem] text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+            className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[0.8125rem] text-ink-muted transition-colors hover:bg-surface hover:text-ink disabled:opacity-50"
           >
-            <LogOut className="size-3.5" aria-hidden />
-            Sign out
+            <Trash2 className="size-3.5" aria-hidden />
+            Forget this device
           </button>
+          <p className="border-t border-line px-3 py-2 text-[0.6875rem] leading-relaxed text-ink-subtle">
+            Removes the local copy only. Your vault stays on the server — come
+            back with the recovery phrase or a passkey.
+          </p>
         </div>
       ) : null}
     </div>

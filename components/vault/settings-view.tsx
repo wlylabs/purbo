@@ -1,16 +1,195 @@
 "use client";
 
-import { AlertTriangle, Download } from "lucide-react";
-import { useState } from "react";
+import { AlertTriangle, Check, Download, Fingerprint } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 
 import { InstallSection } from "@/components/pwa/install-prompt";
 import { ApprovalCard } from "@/components/ui/approval";
 import { Button } from "@/components/ui/button";
+import { PasswordInput } from "@/components/ui/input";
 import { Card, Notice } from "@/components/ui/primitives";
 import { Trace, TraceStep } from "@/components/ui/trace";
+import {
+  PasskeyCancelledError,
+  isPasskeySupported,
+  listPasskeys,
+  removeAllPasskeys,
+} from "@/lib/auth/passkey";
 import { DEFAULT_KDF_PARAMS } from "@/lib/crypto/kdf";
 import { useVault } from "@/lib/vault/provider";
 import { cn } from "@/lib/utils";
+import type { PasskeySummary } from "@/lib/vault/types";
+
+/**
+ * Passkeys, presented as what they are.
+ *
+ * It would be easy to describe this as "sign in with Face ID", but that would
+ * be a lie about where the trust sits: the authenticator does not vouch for
+ * who you are, it holds a secret that unwraps a copy of your root key. Saying
+ * so is the difference between a user understanding that losing every
+ * registered device is survivable (the phrase still works) and believing this
+ * is a login they can reset.
+ */
+function PasskeySection() {
+  const { addPasskey } = useVault();
+
+  const [supported, setSupported] = useState(false);
+  const [passkeys, setPasskeys] = useState<PasskeySummary[] | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [passphrase, setPassphrase] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [added, setAdded] = useState(false);
+
+  const refresh = useCallback(async () => {
+    try {
+      setPasskeys(await listPasskeys());
+    } catch {
+      setPasskeys([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    setSupported(isPasskeySupported());
+    void refresh();
+  }, [refresh]);
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await addPasskey(passphrase);
+      setPassphrase("");
+      setAdding(false);
+      setAdded(true);
+      window.setTimeout(() => setAdded(false), 4000);
+      await refresh();
+    } catch (err) {
+      if (!(err instanceof PasskeyCancelledError)) {
+        setError(err instanceof Error ? err.message : "Could not register the passkey.");
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const count = passkeys?.length ?? 0;
+
+  return (
+    <Card className="p-5 sm:p-6">
+      <h2 className="text-[0.9375rem] font-semibold tracking-tight">Passkeys</h2>
+      <p className="mt-1 text-[0.8125rem] leading-relaxed text-ink-muted">
+        A passkey stores a sealed copy of this vault&rsquo;s root key, openable only by
+        your authenticator after a biometric or device PIN. It is a third way in
+        alongside the passphrase and the recovery phrase — not a replacement for either,
+        and not an account you could reset.
+      </p>
+
+      {!supported ? (
+        <Notice tone="neutral" className="mt-4">
+          This browser does not support WebAuthn, so a passkey cannot be registered
+          here.
+        </Notice>
+      ) : (
+        <>
+          <p className="mt-4 text-[0.8125rem] text-ink-muted">
+            {passkeys === null
+              ? "Checking…"
+              : count === 0
+                ? "No passkeys registered."
+                : `${count} passkey${count === 1 ? "" : "s"} registered to this vault.`}
+          </p>
+
+          {adding ? (
+            <form onSubmit={submit} className="mt-4 space-y-4 border-t border-line pt-5">
+              <p className="text-[0.8125rem] leading-relaxed text-ink-muted">
+                Confirm your passphrase. Registering unwraps the root key for exactly as
+                long as it takes to seal a copy under the new passkey.
+              </p>
+              <PasswordInput
+                label="Passphrase"
+                value={passphrase}
+                onChange={(event) => setPassphrase(event.target.value)}
+                mono={false}
+                autoFocus
+                required
+              />
+              {error ? (
+                <Notice tone="critical" icon={<AlertTriangle className="size-4" />}>
+                  {error}
+                </Notice>
+              ) : null}
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => {
+                    setAdding(false);
+                    setPassphrase("");
+                    setError(null);
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" size="sm" loading={busy} disabled={!passphrase}>
+                  Register passkey
+                </Button>
+              </div>
+            </form>
+          ) : (
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <Button variant="secondary" size="sm" onClick={() => setAdding(true)}>
+                {added ? (
+                  <Check className="size-3.5 text-positive" aria-hidden />
+                ) : (
+                  <Fingerprint className="size-3.5" aria-hidden />
+                )}
+                {added ? "Passkey added" : "Add a passkey"}
+              </Button>
+              {count > 0 ? (
+                <Button
+                  variant="danger"
+                  size="sm"
+                  loading={removing}
+                  onClick={async () => {
+                    setRemoving(true);
+                    setError(null);
+                    try {
+                      await removeAllPasskeys();
+                      await refresh();
+                    } catch (err) {
+                      setError(
+                        err instanceof Error ? err.message : "Could not remove passkeys.",
+                      );
+                    } finally {
+                      setRemoving(false);
+                    }
+                  }}
+                >
+                  Remove all
+                </Button>
+              ) : null}
+              {error && !adding ? (
+                <p className="w-full text-xs leading-relaxed text-critical">{error}</p>
+              ) : null}
+            </div>
+          )}
+
+          {count > 0 ? (
+            <p className="mt-3 text-[0.6875rem] leading-relaxed text-ink-subtle">
+              Removing them here deletes the sealed copies from the server. The passkeys
+              themselves stay in your password manager until you delete them there too.
+            </p>
+          ) : null}
+        </>
+      )}
+    </Card>
+  );
+}
 
 const AUTO_LOCK_CHOICES = [
   { minutes: 1, label: "1 min" },
@@ -119,6 +298,19 @@ export function SettingsView() {
           </TraceStep>
 
           <TraceStep
+            title="Identity"
+            state="done"
+            meta="HKDF · Ed25519"
+            summary="The same phrase that decrypts also signs you in."
+          >
+            A separate HKDF branch turns the seed into an Ed25519 key pair. The server
+            issues a nonce, this device signs it, and your account id is a hash of the
+            public half. There is no identity provider and no password on any server — so
+            &ldquo;signed in&rdquo; and &ldquo;can decrypt&rdquo; are the same fact rather
+            than two that can drift apart.
+          </TraceStep>
+
+          <TraceStep
             title="Passphrase"
             state="done"
             meta={`Argon2id · ${DEFAULT_KDF_PARAMS.memoryKiB / 1024} MiB · ${DEFAULT_KDF_PARAMS.iterations} passes`}
@@ -159,13 +351,16 @@ export function SettingsView() {
             summary={syncMessage ?? "The server holds opaque blobs and a revision counter."}
             last
           >
-            What leaves this device: the wrapped root key with its public KDF parameters, the
-            sealed entries, and a revision number used to resolve two devices writing at
-            once. Your account id is stored as a truncated SHA-256 hash rather than the raw
-            identifier.
+            What leaves this device: the wrapped root key with its public KDF parameters,
+            the sealed entries, and a revision number used to resolve two devices writing
+            at once. Requests carry a short-lived token minted from a signature — no
+            cookie, no email, no third-party identifier. The server&rsquo;s entire record
+            of you is a hash of a public key.
           </TraceStep>
         </Trace>
       </section>
+
+      <PasskeySection />
 
       <Card className="p-5 sm:p-6">
         <InstallSection />

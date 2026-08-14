@@ -1,6 +1,6 @@
 import { Check, Lock } from "lucide-react";
 
-import { AuthButton } from "@/components/auth-button";
+import { VaultLink } from "@/components/vault-link";
 import { Badge } from "@/components/ui/primitives";
 import { StatusPill } from "@/components/ui/status";
 
@@ -57,7 +57,7 @@ function VaultPreview() {
   );
 }
 
-export function Hero({ configured }: { configured: boolean }) {
+export function Hero() {
   return (
     <section className="relative overflow-hidden border-b border-line">
       <div aria-hidden className="pointer-events-none absolute inset-0 bg-grid opacity-60" />
@@ -83,7 +83,7 @@ export function Hero({ configured }: { configured: boolean }) {
             </p>
 
             <div className="mt-7 flex flex-col gap-3 sm:mt-8 sm:flex-row">
-              <AuthButton configured={configured} size="lg" label="Create your wallet" />
+              <VaultLink size="lg" label="Create your vault" />
               <a
                 href="#how"
                 className="inline-flex h-12 items-center justify-center rounded-[var(--radius)] border border-line bg-elevated raised px-6 text-[0.9375rem] font-medium text-ink transition-[background-color,border-color,transform] duration-150 hover:border-line-strong hover:bg-surface active:translate-y-px"

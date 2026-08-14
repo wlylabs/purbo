@@ -4,7 +4,7 @@ import { Menu, X } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-import { AuthButton } from "@/components/auth-button";
+import { VaultLink } from "@/components/vault-link";
 import { ThemeToggle } from "@/components/theme";
 import { Wordmark } from "@/components/logo";
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,7 @@ const LINKS = [
   { href: "#faq", label: "FAQ" },
 ];
 
-export function Nav({ configured }: { configured: boolean }) {
+export function Nav() {
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -64,7 +64,7 @@ export function Nav({ configured }: { configured: boolean }) {
 
           <div className="hidden md:flex items-center gap-3">
             <ThemeToggle />
-            <AuthButton configured={configured} size="sm" showArrow={false} />
+            <VaultLink size="sm" showArrow={false} />
           </div>
 
           <Button
@@ -95,7 +95,7 @@ export function Nav({ configured }: { configured: boolean }) {
             ))}
             <div className="flex items-center justify-between gap-3 pt-3">
               <ThemeToggle />
-              <AuthButton configured={configured} size="sm" className="flex-1" />
+              <VaultLink size="sm" className="flex-1" />
             </div>
           </nav>
         </div>

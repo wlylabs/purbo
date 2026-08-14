@@ -11,20 +11,16 @@ import {
 import { InstallBanner } from "@/components/pwa/install-prompt";
 
 export default function LandingPage() {
-  // Read once on the server: the marketing page must render even when the
-  // deployment has no Privy credentials yet.
-  const configured = Boolean(process.env.NEXT_PUBLIC_PRIVY_APP_ID);
-
   return (
     <>
-      <Nav configured={configured} />
+      <Nav />
       <main id="main">
-        <Hero configured={configured} />
+        <Hero />
         <HowItWorks />
         <Security />
         <Features />
         <Faq />
-        <CallToAction configured={configured} />
+        <CallToAction />
       </main>
       <Footer />
       <InstallBanner />
