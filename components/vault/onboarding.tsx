@@ -262,6 +262,7 @@ function RestoreFlow({ onBack }: { onBack: () => void }) {
             onPassphrase={setPassphrase}
             onConfirmation={setConfirmation}
             disabled={busy}
+            allowSuggestion={false}
           />
         </div>
 
