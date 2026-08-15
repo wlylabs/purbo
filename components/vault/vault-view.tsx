@@ -1,6 +1,17 @@
 "use client";
 
-import { AlertTriangle, ChevronRight, KeyRound, Plus, Search, X } from "lucide-react";
+import {
+  AlertTriangle,
+  Check,
+  ChevronRight,
+  Copy,
+  KeyRound,
+  Lock,
+  Plus,
+  Search,
+  User,
+  X,
+} from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -8,17 +19,59 @@ import { Kbd, useModifierKey } from "@/components/ui/kbd";
 import { Notice } from "@/components/ui/primitives";
 import { useVault } from "@/lib/vault/provider";
 import type { VaultItem } from "@/lib/vault/types";
-import { cn, formatRelativeTime, hostnameOf, monogram } from "@/lib/utils";
+import { cn, copyWithAutoClear, formatRelativeTime, hostnameOf, monogram } from "@/lib/utils";
 import { ItemDetail } from "./item-detail";
 import { ItemForm } from "./item-form";
+import { StepUp } from "./step-up";
+
+type CopyField = "username" | "password";
 
 export function VaultView() {
-  const { items, saveItem, removeItem, corrupted } = useVault();
+  const { items, saveItem, removeItem, corrupted, stepUpVerified } = useVault();
 
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<VaultItem | null>(null);
   const [editing, setEditing] = useState<VaultItem | null>(null);
   const [formOpen, setFormOpen] = useState(false);
+
+  // Quick-copy state for the cards themselves, so username and password can
+  // be grabbed straight from the list — the whole point of a dashboard is
+  // that the thing you came for is one click away, not behind a detail view.
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [failedKey, setFailedKey] = useState<string | null>(null);
+  const [liveMessage, setLiveMessage] = useState("");
+
+  useEffect(() => {
+    if (!copiedKey) return;
+    const timer = window.setTimeout(() => setCopiedKey(null), 2000);
+    return () => window.clearTimeout(timer);
+  }, [copiedKey]);
+
+  const copyField = async (item: VaultItem, field: CopyField) => {
+    const key = `${item.id}:${field}`;
+    try {
+      await copyWithAutoClear(field === "username" ? item.username : item.password);
+      setCopiedKey(key);
+      setFailedKey(null);
+      setLiveMessage(
+        field === "password"
+          ? `Password copied for ${item.name}. Clipboard clears in 30 seconds.`
+          : `Username copied for ${item.name}.`,
+      );
+    } catch {
+      setFailedKey(key);
+      setLiveMessage("Clipboard access was blocked by the browser.");
+    }
+  };
+
+  const requestPasswordCopy = (item: VaultItem) => {
+    if (stepUpVerified) {
+      void copyField(item, "password");
+      return;
+    }
+    setConfirmingId(item.id);
+  };
 
   // Search runs over decrypted entries in memory — there is no server-side
   // index to build, because the server cannot read any of this.
@@ -76,46 +129,93 @@ export function VaultView() {
             {filtered.length} {filtered.length === 1 ? "entry" : "entries"}
             {query ? ` of ${items.length}` : ""}
           </p>
-          <ul className="stagger grid gap-px overflow-hidden rounded-[var(--radius-lg)] border border-line bg-line raised sm:grid-cols-2 lg:grid-cols-3">
+          <ul className="stagger grid gap-px overflow-hidden rounded-[var(--radius-lg)] border border-line bg-line raised sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {filtered.map((item, index) => (
               <li
                 key={item.id}
                 // Drives the entrance delay from globals.css, so the list
                 // arrives as a sweep rather than all at once.
                 style={{ "--stagger-index": index } as React.CSSProperties}
+                className="flex flex-col bg-canvas"
               >
-                <button
-                  type="button"
-                  onClick={() => setSelected(item)}
-                  className="group flex w-full items-center gap-3 bg-canvas p-4 text-left transition-colors hover:bg-surface"
-                >
-                  <span className="grid size-9 shrink-0 place-items-center rounded-[var(--radius-sm)] border border-line bg-surface text-[0.6875rem] font-medium text-ink-muted transition-colors group-hover:border-line-strong group-hover:text-ink">
-                    {monogram(item.name)}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[0.875rem] font-medium">
-                      {item.name}
+                <div className="flex items-center gap-1 p-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setSelected(item)}
+                    className="group flex min-w-0 flex-1 items-center gap-3 rounded-[var(--radius-sm)] p-1.5 text-left transition-colors hover:bg-surface"
+                  >
+                    <span className="grid size-9 shrink-0 place-items-center rounded-[var(--radius-sm)] border border-line bg-surface text-[0.6875rem] font-medium text-ink-muted transition-colors group-hover:border-line-strong group-hover:text-ink">
+                      {monogram(item.name)}
                     </span>
-                    <span className="block truncate text-xs text-ink-subtle">
-                      {item.username || hostnameOf(item.url) || "No username"}
-                    </span>
-                  </span>
-                  {/* The timestamp gives way to a chevron on hover: the row's
-                      age matters while scanning, its affordance once chosen. */}
-                  <span className="relative grid shrink-0 place-items-center">
-                    <span className="text-meta transition-opacity group-hover:opacity-0">
-                      {formatRelativeTime(item.updatedAt)}
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[0.875rem] font-medium">
+                        {item.name}
+                      </span>
+                      <span className="block truncate text-xs text-ink-subtle">
+                        {item.username || hostnameOf(item.url) || "No username"}
+                        <span className="text-ink-subtle/70"> · {formatRelativeTime(item.updatedAt)}</span>
+                      </span>
                     </span>
                     <ChevronRight
                       aria-hidden
-                      className="absolute size-4 text-ink-subtle opacity-0 transition-opacity group-hover:opacity-100"
+                      className="size-3.5 shrink-0 text-ink-subtle opacity-0 transition-opacity group-hover:opacity-100"
                     />
-                  </span>
-                </button>
+                  </button>
+
+                  {/* Straight off the card: the whole point of putting the
+                      vault on the dashboard is that a saved password is one
+                      click away, not one click into a detail view and then
+                      another to copy it. */}
+                  <div className="flex shrink-0 items-center gap-0.5">
+                    {item.username ? (
+                      <QuickAction
+                        label={`Copy username for ${item.name}`}
+                        done={copiedKey === `${item.id}:username`}
+                        failed={failedKey === `${item.id}:username`}
+                        onClick={() => copyField(item, "username")}
+                      >
+                        <User className="size-4" aria-hidden />
+                      </QuickAction>
+                    ) : null}
+                    <QuickAction
+                      label={
+                        stepUpVerified
+                          ? `Copy password for ${item.name}`
+                          : `Confirm it's you to copy the password for ${item.name}`
+                      }
+                      done={copiedKey === `${item.id}:password`}
+                      failed={failedKey === `${item.id}:password`}
+                      onClick={() => requestPasswordCopy(item)}
+                    >
+                      {stepUpVerified ? (
+                        <Copy className="size-4" aria-hidden />
+                      ) : (
+                        <Lock className="size-4" aria-hidden />
+                      )}
+                    </QuickAction>
+                  </div>
+                </div>
+
+                {confirmingId === item.id ? (
+                  <div className="animate-fade border-t border-line p-3">
+                    <StepUp
+                      action={`copy the password for ${item.name}`}
+                      onCancel={() => setConfirmingId(null)}
+                      onVerified={() => {
+                        setConfirmingId(null);
+                        void copyField(item, "password");
+                      }}
+                    />
+                  </div>
+                ) : null}
               </li>
             ))}
             <GridFillers count={filtered.length} />
           </ul>
+
+          <p aria-live="polite" className="sr-only">
+            {liveMessage}
+          </p>
         </>
       )}
 
@@ -234,6 +334,37 @@ function SearchField({
   );
 }
 
+/** Icon-only action on a card: copy username, copy (or unlock) password. */
+function QuickAction({
+  label,
+  done,
+  failed,
+  onClick,
+  children,
+}: {
+  label: string;
+  done: boolean;
+  failed: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className={cn(
+        "grid size-8 shrink-0 place-items-center rounded-[var(--radius-sm)] text-ink-subtle transition-colors",
+        "hover:bg-surface hover:text-ink",
+        failed && "text-critical hover:text-critical",
+      )}
+    >
+      {done ? <Check className="size-4 text-positive" aria-hidden /> : children}
+    </button>
+  );
+}
+
 /**
  * Blank tiles that complete the last row of the entry grid.
  *
@@ -245,14 +376,16 @@ function SearchField({
 function GridFillers({ count }: { count: number }) {
   const missingAtTwo = (2 - (count % 2)) % 2;
   const missingAtThree = (3 - (count % 3)) % 3;
+  const missingAtFour = (4 - (count % 4)) % 4;
 
   // A single column is never short, so every filler stays hidden at base.
   return (
     <>
-      {[0, 1].map((index) => {
+      {[0, 1, 2].map((index) => {
         const atTwo = index < missingAtTwo;
         const atThree = index < missingAtThree;
-        if (!atTwo && !atThree) return null;
+        const atFour = index < missingAtFour;
+        if (!atTwo && !atThree && !atFour) return null;
 
         return (
           <li
@@ -262,6 +395,7 @@ function GridFillers({ count }: { count: number }) {
               "hidden bg-canvas",
               atTwo && "sm:block",
               atThree ? "lg:block" : "lg:hidden",
+              atFour ? "xl:block" : "xl:hidden",
             )}
           />
         );
