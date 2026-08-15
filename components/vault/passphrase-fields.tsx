@@ -51,12 +51,15 @@ export function PassphraseFields({
   onPassphrase,
   onConfirmation,
   disabled,
+  allowSuggestion = true,
 }: {
   passphrase: string;
   confirmation: string;
   onPassphrase: (value: string) => void;
   onConfirmation: (value: string) => void;
   disabled?: boolean;
+  /** Off on restore: that screen sets a passphrase the user already chose, not a fresh one. */
+  allowSuggestion?: boolean;
 }) {
   const [suggested, setSuggested] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -101,22 +104,24 @@ export function PassphraseFields({
         hint={`At least ${MIN_PASSPHRASE_LENGTH} characters and ${MIN_PASSPHRASE_BITS} bits of estimated entropy.`}
       />
 
-      <div className="flex flex-wrap items-center gap-2">
-        <Button type="button" variant="secondary" size="sm" onClick={suggest} disabled={disabled}>
-          <Dices className="size-3.5" aria-hidden />
-          {suggested ? "Suggest another" : "Suggest a passphrase"}
-        </Button>
-        {suggested ? (
-          <Button type="button" variant="ghost" size="sm" onClick={copy} disabled={disabled}>
-            {copied ? (
-              <Check className="size-3.5 text-positive" aria-hidden />
-            ) : (
-              <Copy className="size-3.5" aria-hidden />
-            )}
-            {copied ? "Copied" : "Copy"}
+      {allowSuggestion ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" variant="secondary" size="sm" onClick={suggest} disabled={disabled}>
+            <Dices className="size-3.5" aria-hidden />
+            {suggested ? "Suggest another" : "Suggest a passphrase"}
           </Button>
-        ) : null}
-      </div>
+          {suggested ? (
+            <Button type="button" variant="ghost" size="sm" onClick={copy} disabled={disabled}>
+              {copied ? (
+                <Check className="size-3.5 text-positive" aria-hidden />
+              ) : (
+                <Copy className="size-3.5" aria-hidden />
+              )}
+              {copied ? "Copied" : "Copy"}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
 
       <StrengthMeter password={passphrase} />
 
