@@ -18,6 +18,7 @@ export function CopyRow({
   label,
   value,
   secret = false,
+  initiallyRevealed = false,
   mono = false,
   className,
 }: {
@@ -25,11 +26,17 @@ export function CopyRow({
   value: string;
   /** Masks the value and adds a reveal toggle. */
   secret?: boolean;
+  /**
+   * Starts a secret row unmasked. For the case where the disclosure has
+   * already been authorised — asking a second time with an eye icon would be
+   * a click that protects nothing.
+   */
+  initiallyRevealed?: boolean;
   mono?: boolean;
   className?: string;
 }) {
   const [copied, setCopied] = useState(false);
-  const [revealed, setRevealed] = useState(false);
+  const [revealed, setRevealed] = useState(initiallyRevealed);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
@@ -38,8 +45,9 @@ export function CopyRow({
     return () => window.clearTimeout(timer);
   }, [copied]);
 
-  // Re-mask whenever the row is pointed at a different secret.
-  useEffect(() => setRevealed(false), [value]);
+  // Re-mask whenever the row is pointed at a different secret — back to
+  // whatever this row's resting state is, which is not always "hidden".
+  useEffect(() => setRevealed(initiallyRevealed), [value, initiallyRevealed]);
 
   const copy = async () => {
     try {
@@ -102,11 +110,17 @@ export function CopyRow({
       {/* Feedback replaces nothing above it, so the row grows rather than
           swapping content the user was mid-read of. */}
       {failed ? (
-        <p className="animate-fade border-t border-line px-3 py-1.5 text-[0.6875rem] text-critical">
+        <p
+          role="status"
+          className="animate-fade border-t border-line px-3 py-1.5 text-[0.6875rem] text-critical"
+        >
           Clipboard access was blocked by the browser.
         </p>
       ) : copied ? (
-        <p className="animate-fade border-t border-line px-3 py-1.5 text-[0.6875rem] text-ink-subtle">
+        <p
+          role="status"
+          className="animate-fade border-t border-line px-3 py-1.5 text-[0.6875rem] text-ink-subtle"
+        >
           {secret
             ? "Copied — the clipboard clears itself in 30 seconds."
             : "Copied to the clipboard."}
