@@ -1,4 +1,8 @@
+import { Code2 } from "lucide-react";
+
 import { Wordmark } from "@/components/logo";
+
+const REPO_URL = "https://github.com/wlylabs/purbo";
 
 export function Footer() {
   const columns = [
@@ -31,6 +35,17 @@ export function Footer() {
               A password vault only you can open. Encrypted in the browser, sealed with a
               recovery phrase you own.
             </p>
+            {/* The FAQ says the implementation is open for review; this is
+                where someone who takes that seriously goes to do it. */}
+            <a
+              href={REPO_URL}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="mt-4 inline-flex items-center gap-2 text-[0.8125rem] text-ink-muted transition-colors hover:text-ink"
+            >
+              <Code2 className="size-3.5 shrink-0" aria-hidden />
+              Read the source
+            </a>
           </div>
 
           {columns.map((column) => (

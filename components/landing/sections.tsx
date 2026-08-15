@@ -7,6 +7,7 @@ import {
   ScanLine,
   ServerOff,
   ShieldCheck,
+  SlidersHorizontal,
   Sparkles,
   WifiOff,
 } from "lucide-react";
@@ -120,6 +121,11 @@ export function Security() {
       title: "Locks itself, clears the clipboard",
       body: "The vault re-locks after inactivity and keys are dropped from memory. Copied passwords are wiped from the clipboard after 30 seconds if nothing else has overwritten them.",
     },
+    {
+      icon: SlidersHorizontal,
+      title: "A hostile server cannot weaken your key",
+      body: "The cost parameters for your passphrase travel with the ciphertext, so the server gets to name them. Your browser checks them against a floor before deriving anything — otherwise a compromised server could hand back one round and quietly gut every future unlock.",
+    },
   ];
 
   return (
@@ -131,6 +137,11 @@ export function Security() {
           description="Zero-knowledge is a claim that only means something if the architecture forces it. Here is what forces it."
         />
 
+        {/*
+          The hairline rules are the container's own background showing through
+          a 1px gap, which means an unfilled cell is not empty space — it paints
+          as a slab of divider colour. Keep this list a multiple of two.
+        */}
         <div className="mt-8 grid gap-px overflow-hidden rounded-[var(--radius-lg)] border border-line bg-line raised sm:mt-12 sm:grid-cols-2">
           {guarantees.map((item) => (
             <div
