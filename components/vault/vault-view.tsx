@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   ExternalLink,
   Eye,
+  EyeOff,
   KeyRound,
   Lock,
   Pencil,
@@ -31,7 +32,6 @@ import {
   safeExternalUrl,
 } from "@/lib/utils";
 import { ItemForm } from "./item-form";
-import { StepUp } from "./step-up";
 import { StrengthMeter } from "./strength-meter";
 
 /**
@@ -43,25 +43,19 @@ import { StrengthMeter } from "./strength-meter";
  * names that each have to be clicked to become useful makes the lookup take
  * two steps instead of none.
  *
- * The one thing that stays behind a question is the plaintext password, and
- * that question is asked once for the whole board rather than per card: a
- * confirmation covers every entry for the next couple of minutes, so the
- * dashboard goes from masked to fully readable in a single answer.
+ * Passwords are masked on arrival and unmask on a toggle — the board's own,
+ * for all of them at once, or the eye on a single row. The unlock is the
+ * check; asking for the passphrase a second time to read what that passphrase
+ * already decrypted bought a shoulder-surfing defence a keystroke provides,
+ * and charged an Argon2id derivation for it.
  */
 export function VaultView() {
-  const { items, saveItem, removeItem, corrupted, stepUpVerified } = useVault();
+  const { items, saveItem, removeItem, corrupted } = useVault();
 
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<VaultItem | null>(null);
   const [formOpen, setFormOpen] = useState(false);
-  const [revealAsked, setRevealAsked] = useState(false);
-
-  // The prompt has served its purpose the moment the window opens, and it must
-  // not linger once the window lapses either — that would leave a step-up form
-  // sitting above the board nobody asked for.
-  useEffect(() => {
-    if (stepUpVerified) setRevealAsked(false);
-  }, [stepUpVerified]);
+  const [revealAll, setRevealAll] = useState(false);
 
   // Search runs over decrypted entries in memory — there is no server-side
   // index to build, because the server cannot read any of this.
@@ -90,30 +84,30 @@ export function VaultView() {
     <div className="space-y-5 sm:space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <SearchField value={query} onChange={setQuery} />
-        {items.length > 0 && !stepUpVerified ? (
-          <Button
-            variant="secondary"
-            onClick={() => setRevealAsked((asked) => !asked)}
-            aria-expanded={revealAsked}
-          >
-            <Eye className="size-4" aria-hidden />
-            Show passwords
+        <div className="flex items-center gap-2">
+          {/* One switch for the whole board. Each row keeps its own eye for
+              the case where only one password is wanted on screen. */}
+          {items.length > 0 ? (
+            <Button
+              variant="secondary"
+              className="flex-1 sm:flex-none"
+              aria-pressed={revealAll}
+              onClick={() => setRevealAll((revealed) => !revealed)}
+            >
+              {revealAll ? (
+                <EyeOff className="size-4" aria-hidden />
+              ) : (
+                <Eye className="size-4" aria-hidden />
+              )}
+              {revealAll ? "Hide passwords" : "Show passwords"}
+            </Button>
+          ) : null}
+          <Button className="flex-1 sm:flex-none" onClick={openNew}>
+            <Plus className="size-4" aria-hidden />
+            New entry
           </Button>
-        ) : null}
-        <Button onClick={openNew}>
-          <Plus className="size-4" aria-hidden />
-          New entry
-        </Button>
+        </div>
       </div>
-
-      {/* Answering here unmasks every card at once. Each card can still ask on
-          its own, for the case where only one password is wanted. */}
-      {revealAsked && !stepUpVerified ? (
-        <StepUp
-          action="show the passwords on this dashboard"
-          onCancel={() => setRevealAsked(false)}
-        />
-      ) : null}
 
       {corrupted.length > 0 ? (
         <Notice tone="critical" icon={<AlertTriangle className="size-4" />}>
@@ -127,7 +121,7 @@ export function VaultView() {
         <EmptyState onAdd={openNew} />
       ) : (
         <>
-          <Overview items={items} />
+          <Overview items={items} revealed={revealAll} />
 
           {filtered.length === 0 ? (
             <div className="animate-fade rounded-[var(--radius-lg)] border border-line bg-elevated raised py-12 text-center sm:py-16">
@@ -149,10 +143,15 @@ export function VaultView() {
                     // Drives the entrance delay from globals.css, so the board
                     // arrives as a sweep rather than all at once.
                     style={{ "--stagger-index": index } as React.CSSProperties}
-                    className="flex"
+                    // A grid item defaults to min-width:auto, which sizes the
+                    // column to the widest thing inside the card rather than
+                    // to the column — on a phone that is what pushes the whole
+                    // page sideways.
+                    className="flex min-w-0"
                   >
                     <EntryCard
                       item={item}
+                      revealed={revealAll}
                       onEdit={openEdit}
                       onDelete={() => removeItem(item.id)}
                     />
@@ -185,9 +184,7 @@ export function VaultView() {
  * manager that only ever shows one entry at a time can never answer those,
  * which is how a reused password survives for years.
  */
-function Overview({ items }: { items: VaultItem[] }) {
-  const { stepUpVerified } = useVault();
-
+function Overview({ items, revealed }: { items: VaultItem[]; revealed: boolean }) {
   const { weak, reused } = useMemo(() => {
     const counts = new Map<string, number>();
     for (const item of items) {
@@ -220,7 +217,7 @@ function Overview({ items }: { items: VaultItem[] }) {
       <div className="rounded-[var(--radius)] border border-line bg-elevated raised px-3.5 py-3">
         <p className="text-label">Passwords</p>
         <div className="mt-2">
-          {stepUpVerified ? (
+          {revealed ? (
             <Badge tone="positive">
               <ShieldCheck className="size-3" aria-hidden />
               Visible
@@ -275,22 +272,18 @@ function Stat({
  */
 function EntryCard({
   item,
+  revealed,
   onEdit,
   onDelete,
 }: {
   item: VaultItem;
+  /** Resting state of the password row, driven by the board's own switch. */
+  revealed: boolean;
   onEdit: (item: VaultItem) => void;
   onDelete: () => Promise<void>;
 }) {
-  const { stepUpVerified } = useVault();
-
-  const [confirmingReveal, setConfirmingReveal] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
-
-  useEffect(() => {
-    if (stepUpVerified) setConfirmingReveal(false);
-  }, [stepUpVerified]);
 
   const href = safeExternalUrl(item.url);
   const host = hostnameOf(item.url);
@@ -340,47 +333,20 @@ function EntryCard({
           </div>
         )}
 
-        {/* The password is the one field worth a second question. Everything
-            else on this card is metadata a shoulder over the screen could have
-            guessed anyway. */}
-        {stepUpVerified ? (
-          <div className="space-y-2">
-            {/* Unmasked outright, not behind an eye. The confirmation that
-                got us here was the disclosure decision; making the user click
-                again once per card is the pattern this dashboard replaces. */}
-            <CopyRow label="Password" value={item.password} secret initiallyRevealed />
-            <StrengthMeter password={item.password} className="px-1" />
-          </div>
-        ) : confirmingReveal ? (
-          <StepUp
-            action={`show the password for ${item.name}`}
-            onCancel={() => setConfirmingReveal(false)}
+        {/* Masked by default and copyable while masked — the eye is for the
+            times the value has to be read out or typed elsewhere. The meter
+            reads the strength, not the password, so it stays legible either
+            way; that is the whole point of putting vault health on a
+            dashboard. */}
+        <div className="space-y-2">
+          <CopyRow
+            label="Password"
+            value={item.password}
+            secret
+            initiallyRevealed={revealed}
           />
-        ) : (
-          <div className="rounded-[var(--radius)] border border-line bg-surface">
-            <div className="flex items-center gap-3 px-3 py-2.5">
-              <div className="min-w-0 flex-1">
-                <p className="text-label">Password</p>
-                <p className="mt-1 select-none font-mono text-[0.9375rem] leading-snug tracking-tight text-ink-muted">
-                  {"•".repeat(16)}
-                </p>
-              </div>
-              <Button
-                variant="secondary"
-                size="sm"
-                className="shrink-0"
-                onClick={() => setConfirmingReveal(true)}
-              >
-                <Lock className="size-3.5" aria-hidden />
-                Reveal
-              </Button>
-            </div>
-            {/* The meter reads the strength, not the password, so it can stay
-                on screen while the value itself is masked — that is the whole
-                point of putting vault health on a dashboard. */}
-            <StrengthMeter password={item.password} showDetails={false} className="px-3 pb-3" />
-          </div>
-        )}
+          <StrengthMeter password={item.password} className="px-1" />
+        </div>
 
         {href ? (
           <div className="rounded-[var(--radius)] border border-line bg-surface px-3 py-2.5">

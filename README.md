@@ -120,13 +120,16 @@ record is sealed.
   passkey: the secret that unwraps the vault never leaves the authenticator and
   is released only after a biometric or device PIN. An attacker who copies the
   browser profile gets a sealed record and no way to open it.
-- **Being unlocked is not being confirmed.** Reading a stored password,
-  editing an entry, taking a plaintext export or deleting the vault re-checks
-  the passphrase or a passkey, and that confirmation lasts two minutes rather
-  than the session. It is a check against whoever is at the keyboard now, not
-  against script — anything running in an unlocked tab already has the data
-  key — which is precisely the gap between "I unlocked this at nine" and
-  "someone is reading it at four".
+- **Being unlocked is not being confirmed.** Taking a plaintext export or
+  deleting the vault re-checks the passphrase or a passkey, and that
+  confirmation lasts two minutes rather than the session. It is a check against
+  whoever is at the keyboard now, not against script — anything running in an
+  unlocked tab already has the data key — which is precisely the gap between
+  "I unlocked this at nine" and "someone is deleting it at four". Reading and
+  editing an entry are not behind it: passwords are masked until asked for,
+  and a mask is what a shoulder over the screen is up against. Charging an
+  Argon2id derivation to read what the unlock already decrypted bought
+  nothing the eye toggle does not.
 - **The vault re-locks** after inactivity, optionally the moment the tab stops
   being what is on screen, and copied passwords are cleared from the clipboard
   after 30 seconds if nothing has overwritten them.

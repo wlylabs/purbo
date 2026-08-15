@@ -16,9 +16,12 @@ import { useVault } from "@/lib/vault/provider";
  *
  * Unlocking establishes who was there at the time. It says nothing about who
  * is there now — the laptop may have been carried into a meeting, the phone
- * handed over to show someone a photo. So the handful of actions that hand
- * over a plaintext secret or destroy the vault re-check, and everything else
- * stays out of the way.
+ * handed over to show someone a photo. So the two actions there is no taking
+ * back — writing every password to a file in the clear, and erasing the vault
+ * from the server — re-check, and everything else stays out of the way.
+ * Reading a password on the dashboard is not one of them: it is masked until
+ * asked for and unmasks on a toggle, which is the whole of what a second
+ * passphrase prompt was buying there.
  *
  * Both paths prove the same thing the unlock proved: the passphrase by
  * re-deriving and unwrapping for real, the passkey by a user-verified
