@@ -90,7 +90,11 @@ function WordField({
   onChange: (value: string) => void;
 }) {
   const normalised = value.trim().toLowerCase();
-  const correct = normalised === expected;
+  const correct = normalised.length > 0 && normalised === expected;
+  // Red the moment typing diverges from the expected word, not only once a
+  // full word lands — that live signal is what replaces flipping back to the
+  // previous screen (or a copy sitting in another tab) to re-check by eye.
+  const wrong = normalised.length > 0 && !correct && !expected.startsWith(normalised);
 
   const suggestions = useMemo(() => {
     if (!normalised || correct) return [];
@@ -114,7 +118,11 @@ function WordField({
         autoCapitalize="off"
         spellCheck={false}
         inputMode="text"
-        className="font-mono"
+        className={cn(
+          "font-mono",
+          correct && "border-positive/40 bg-positive/5",
+          wrong && "border-critical/40 bg-critical/5",
+        )}
         error={
           normalised && !correct && suggestions.length === 0 ? "Not a word in the list." : null
         }
