@@ -8,7 +8,21 @@ import { THEME_SCRIPT } from "@/components/theme";
 import { Providers } from "./providers";
 import "./globals.css";
 
+/**
+ * Absolute base for canonical and social URLs. Open Graph consumers reject
+ * relative paths, so without this the card image would never resolve.
+ * `VERCEL_PROJECT_PRODUCTION_URL` keeps preview deploys pointing at the
+ * production domain rather than advertising their own throwaway hostname.
+ */
+const siteUrl =
+  process.env.NEXT_PUBLIC_SITE_URL ??
+  (process.env.VERCEL_PROJECT_PRODUCTION_URL
+    ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+    : "http://localhost:3000");
+
 export const metadata: Metadata = {
+  metadataBase: new URL(siteUrl),
+  alternates: { canonical: "/" },
   title: {
     default: "Purbo — End-to-end encrypted password manager",
     template: "%s · Purbo",
@@ -39,6 +53,12 @@ export const metadata: Metadata = {
     description:
       "A password vault only you can open. Argon2id, AES-256-GCM, and a 24-word recovery phrase.",
     type: "website",
+    url: "/",
+    siteName: "Purbo",
+    // The image itself comes from app/opengraph-image.tsx.
+  },
+  twitter: {
+    card: "summary_large_image",
   },
 };
 
