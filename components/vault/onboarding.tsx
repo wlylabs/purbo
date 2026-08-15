@@ -29,10 +29,9 @@ import { estimateStrength } from "@/lib/crypto/password";
 import { NoVaultForPhraseError, useVault } from "@/lib/vault/provider";
 import { cn } from "@/lib/utils";
 import { PassphraseFields, passphraseIsUsable } from "./passphrase-fields";
-import { PhraseVerify } from "./phrase-verify";
 
 type Route = "choose" | "create" | "restore";
-type Step = "intro" | "phrase" | "verify" | "passphrase" | "passkey";
+type Step = "intro" | "phrase" | "passphrase" | "passkey";
 
 export function Onboarding() {
   const [route, setRoute] = useState<Route>("choose");
@@ -406,8 +405,6 @@ function CreateFlow({ onBack }: { onBack: () => void }) {
 
   const words = useMemo(() => phrase.split(" "), [phrase]);
 
-  const [verified, setVerified] = useState(false);
-
   const passphraseValid = passphraseIsUsable(passphrase, estimateStrength(passphrase).bits);
   const matches = passphrase.length > 0 && passphrase === confirmation;
 
@@ -581,32 +578,8 @@ function CreateFlow({ onBack }: { onBack: () => void }) {
               <Button
                 className="flex-1"
                 disabled={!acknowledged || !revealed}
-                onClick={() => setStep("verify")}
+                onClick={() => setStep("passphrase")}
               >
-                Continue
-                <ArrowRight className="size-4" aria-hidden />
-              </Button>
-            </div>
-          </div>
-        ) : null}
-
-        {step === "verify" ? (
-          <div className="space-y-6">
-            <div className="space-y-2">
-              <h1 className="text-display text-2xl">Confirm the phrase</h1>
-              <p className="text-[0.8125rem] leading-relaxed text-ink-muted">
-                Prove the copy you just made is one you can actually come back to.
-              </p>
-            </div>
-
-            <PhraseVerify words={words} onVerifiedChange={setVerified} />
-
-            <div className="flex gap-2">
-              <Button variant="ghost" onClick={() => setStep("phrase")}>
-                <ArrowLeft className="size-4" aria-hidden />
-                Show the words
-              </Button>
-              <Button className="flex-1" disabled={!verified} onClick={() => setStep("passphrase")}>
                 Continue
                 <ArrowRight className="size-4" aria-hidden />
               </Button>
@@ -653,7 +626,7 @@ function CreateFlow({ onBack }: { onBack: () => void }) {
             ) : null}
 
             <div className="flex gap-2">
-              <Button variant="ghost" onClick={() => setStep("verify")} disabled={submitting}>
+              <Button variant="ghost" onClick={() => setStep("phrase")} disabled={submitting}>
                 <ArrowLeft className="size-4" aria-hidden />
                 Back
               </Button>
@@ -676,7 +649,6 @@ function CreateFlow({ onBack }: { onBack: () => void }) {
 const STEPS: { id: Step; label: string }[] = [
   { id: "intro", label: "Brief" },
   { id: "phrase", label: "Phrase" },
-  { id: "verify", label: "Verify" },
   { id: "passphrase", label: "Passphrase" },
 ];
 
