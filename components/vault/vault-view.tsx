@@ -2,76 +2,66 @@
 
 import {
   AlertTriangle,
-  Check,
-  ChevronRight,
-  Copy,
+  ExternalLink,
+  Eye,
   KeyRound,
   Lock,
+  Pencil,
   Plus,
   Search,
-  User,
+  ShieldCheck,
+  Trash2,
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { ApprovalCard } from "@/components/ui/approval";
 import { Button } from "@/components/ui/button";
+import { CopyRow } from "@/components/ui/copy-row";
 import { Kbd, useModifierKey } from "@/components/ui/kbd";
-import { Notice } from "@/components/ui/primitives";
+import { Badge, Card, Notice } from "@/components/ui/primitives";
+import { estimateStrength } from "@/lib/crypto/password";
 import { useVault } from "@/lib/vault/provider";
 import type { VaultItem } from "@/lib/vault/types";
-import { cn, copyWithAutoClear, formatRelativeTime, hostnameOf, monogram } from "@/lib/utils";
-import { ItemDetail } from "./item-detail";
+import {
+  cn,
+  formatRelativeTime,
+  hostnameOf,
+  monogram,
+  safeExternalUrl,
+} from "@/lib/utils";
 import { ItemForm } from "./item-form";
 import { StepUp } from "./step-up";
+import { StrengthMeter } from "./strength-meter";
 
-type CopyField = "username" | "password";
-
+/**
+ * The vault, as a dashboard rather than a directory.
+ *
+ * Every entry shows what it holds where it sits — username, password field,
+ * website, notes, health — so nothing is one click away behind a detail view.
+ * Opening a vault is not browsing; it is looking something up, and a list of
+ * names that each have to be clicked to become useful makes the lookup take
+ * two steps instead of none.
+ *
+ * The one thing that stays behind a question is the plaintext password, and
+ * that question is asked once for the whole board rather than per card: a
+ * confirmation covers every entry for the next couple of minutes, so the
+ * dashboard goes from masked to fully readable in a single answer.
+ */
 export function VaultView() {
   const { items, saveItem, removeItem, corrupted, stepUpVerified } = useVault();
 
   const [query, setQuery] = useState("");
-  const [selected, setSelected] = useState<VaultItem | null>(null);
   const [editing, setEditing] = useState<VaultItem | null>(null);
   const [formOpen, setFormOpen] = useState(false);
+  const [revealAsked, setRevealAsked] = useState(false);
 
-  // Quick-copy state for the cards themselves, so username and password can
-  // be grabbed straight from the list — the whole point of a dashboard is
-  // that the thing you came for is one click away, not behind a detail view.
-  const [confirmingId, setConfirmingId] = useState<string | null>(null);
-  const [copiedKey, setCopiedKey] = useState<string | null>(null);
-  const [failedKey, setFailedKey] = useState<string | null>(null);
-  const [liveMessage, setLiveMessage] = useState("");
-
+  // The prompt has served its purpose the moment the window opens, and it must
+  // not linger once the window lapses either — that would leave a step-up form
+  // sitting above the board nobody asked for.
   useEffect(() => {
-    if (!copiedKey) return;
-    const timer = window.setTimeout(() => setCopiedKey(null), 2000);
-    return () => window.clearTimeout(timer);
-  }, [copiedKey]);
-
-  const copyField = async (item: VaultItem, field: CopyField) => {
-    const key = `${item.id}:${field}`;
-    try {
-      await copyWithAutoClear(field === "username" ? item.username : item.password);
-      setCopiedKey(key);
-      setFailedKey(null);
-      setLiveMessage(
-        field === "password"
-          ? `Password copied for ${item.name}. Clipboard clears in 30 seconds.`
-          : `Username copied for ${item.name}.`,
-      );
-    } catch {
-      setFailedKey(key);
-      setLiveMessage("Clipboard access was blocked by the browser.");
-    }
-  };
-
-  const requestPasswordCopy = (item: VaultItem) => {
-    if (stepUpVerified) {
-      void copyField(item, "password");
-      return;
-    }
-    setConfirmingId(item.id);
-  };
+    if (stepUpVerified) setRevealAsked(false);
+  }, [stepUpVerified]);
 
   // Search runs over decrypted entries in memory — there is no server-side
   // index to build, because the server cannot read any of this.
@@ -86,13 +76,13 @@ export function VaultView() {
     );
   }, [items, query]);
 
-  // Keep the open detail view in sync with edits made behind it.
-  const selectedLive = selected
-    ? (items.find((item) => item.id === selected.id) ?? null)
-    : null;
-
   const openNew = () => {
     setEditing(null);
+    setFormOpen(true);
+  };
+
+  const openEdit = (item: VaultItem) => {
+    setEditing(item);
     setFormOpen(true);
   };
 
@@ -100,11 +90,30 @@ export function VaultView() {
     <div className="space-y-5 sm:space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <SearchField value={query} onChange={setQuery} />
+        {items.length > 0 && !stepUpVerified ? (
+          <Button
+            variant="secondary"
+            onClick={() => setRevealAsked((asked) => !asked)}
+            aria-expanded={revealAsked}
+          >
+            <Eye className="size-4" aria-hidden />
+            Show passwords
+          </Button>
+        ) : null}
         <Button onClick={openNew}>
           <Plus className="size-4" aria-hidden />
           New entry
         </Button>
       </div>
+
+      {/* Answering here unmasks every card at once. Each card can still ask on
+          its own, for the case where only one password is wanted. */}
+      {revealAsked && !stepUpVerified ? (
+        <StepUp
+          action="show the passwords on this dashboard"
+          onCancel={() => setRevealAsked(false)}
+        />
+      ) : null}
 
       {corrupted.length > 0 ? (
         <Notice tone="critical" icon={<AlertTriangle className="size-4" />}>
@@ -116,119 +125,44 @@ export function VaultView() {
 
       {items.length === 0 ? (
         <EmptyState onAdd={openNew} />
-      ) : filtered.length === 0 ? (
-        <div className="animate-fade rounded-[var(--radius-lg)] border border-line bg-elevated raised py-12 text-center sm:py-16">
-          <p className="text-[0.9375rem] font-medium">No matches</p>
-          <p className="mt-1 text-[0.8125rem] text-ink-muted">
-            Nothing in your vault matches &ldquo;{query}&rdquo;.
-          </p>
-        </div>
       ) : (
         <>
-          <p className="text-label">
-            {filtered.length} {filtered.length === 1 ? "entry" : "entries"}
-            {query ? ` of ${items.length}` : ""}
-          </p>
-          <ul className="stagger grid gap-px overflow-hidden rounded-[var(--radius-lg)] border border-line bg-line raised sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {filtered.map((item, index) => (
-              <li
-                key={item.id}
-                // Drives the entrance delay from globals.css, so the list
-                // arrives as a sweep rather than all at once.
-                style={{ "--stagger-index": index } as React.CSSProperties}
-                className="flex flex-col bg-canvas"
-              >
-                <div className="flex items-center gap-1 p-2.5">
-                  <button
-                    type="button"
-                    onClick={() => setSelected(item)}
-                    className="group flex min-w-0 flex-1 items-center gap-3 rounded-[var(--radius-sm)] p-1.5 text-left transition-colors hover:bg-surface"
+          <Overview items={items} />
+
+          {filtered.length === 0 ? (
+            <div className="animate-fade rounded-[var(--radius-lg)] border border-line bg-elevated raised py-12 text-center sm:py-16">
+              <p className="text-[0.9375rem] font-medium">No matches</p>
+              <p className="mt-1 text-[0.8125rem] text-ink-muted">
+                Nothing in your vault matches &ldquo;{query}&rdquo;.
+              </p>
+            </div>
+          ) : (
+            <>
+              <p className="text-label">
+                {filtered.length} {filtered.length === 1 ? "entry" : "entries"}
+                {query ? ` of ${items.length}` : ""}
+              </p>
+              <ul className="stagger grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {filtered.map((item, index) => (
+                  <li
+                    key={item.id}
+                    // Drives the entrance delay from globals.css, so the board
+                    // arrives as a sweep rather than all at once.
+                    style={{ "--stagger-index": index } as React.CSSProperties}
+                    className="flex"
                   >
-                    <span className="grid size-9 shrink-0 place-items-center rounded-[var(--radius-sm)] border border-line bg-surface text-[0.6875rem] font-medium text-ink-muted transition-colors group-hover:border-line-strong group-hover:text-ink">
-                      {monogram(item.name)}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[0.875rem] font-medium">
-                        {item.name}
-                      </span>
-                      <span className="block truncate text-xs text-ink-subtle">
-                        {item.username || hostnameOf(item.url) || "No username"}
-                        <span className="text-ink-subtle/70"> · {formatRelativeTime(item.updatedAt)}</span>
-                      </span>
-                    </span>
-                    <ChevronRight
-                      aria-hidden
-                      className="size-3.5 shrink-0 text-ink-subtle opacity-0 transition-opacity group-hover:opacity-100"
+                    <EntryCard
+                      item={item}
+                      onEdit={openEdit}
+                      onDelete={() => removeItem(item.id)}
                     />
-                  </button>
-
-                  {/* Straight off the card: the whole point of putting the
-                      vault on the dashboard is that a saved password is one
-                      click away, not one click into a detail view and then
-                      another to copy it. */}
-                  <div className="flex shrink-0 items-center gap-0.5">
-                    {item.username ? (
-                      <QuickAction
-                        label={`Copy username for ${item.name}`}
-                        done={copiedKey === `${item.id}:username`}
-                        failed={failedKey === `${item.id}:username`}
-                        onClick={() => copyField(item, "username")}
-                      >
-                        <User className="size-4" aria-hidden />
-                      </QuickAction>
-                    ) : null}
-                    <QuickAction
-                      label={
-                        stepUpVerified
-                          ? `Copy password for ${item.name}`
-                          : `Confirm it's you to copy the password for ${item.name}`
-                      }
-                      done={copiedKey === `${item.id}:password`}
-                      failed={failedKey === `${item.id}:password`}
-                      onClick={() => requestPasswordCopy(item)}
-                    >
-                      {stepUpVerified ? (
-                        <Copy className="size-4" aria-hidden />
-                      ) : (
-                        <Lock className="size-4" aria-hidden />
-                      )}
-                    </QuickAction>
-                  </div>
-                </div>
-
-                {confirmingId === item.id ? (
-                  <div className="animate-fade border-t border-line p-3">
-                    <StepUp
-                      action={`copy the password for ${item.name}`}
-                      onCancel={() => setConfirmingId(null)}
-                      onVerified={() => {
-                        setConfirmingId(null);
-                        void copyField(item, "password");
-                      }}
-                    />
-                  </div>
-                ) : null}
-              </li>
-            ))}
-            <GridFillers count={filtered.length} />
-          </ul>
-
-          <p aria-live="polite" className="sr-only">
-            {liveMessage}
-          </p>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
         </>
       )}
-
-      <ItemDetail
-        item={selectedLive}
-        onClose={() => setSelected(null)}
-        onEdit={(item) => {
-          setSelected(null);
-          setEditing(item);
-          setFormOpen(true);
-        }}
-        onDelete={(item) => removeItem(item.id)}
-      />
 
       <ItemForm
         open={formOpen}
@@ -240,6 +174,265 @@ export function VaultView() {
         onSave={saveItem}
       />
     </div>
+  );
+}
+
+/**
+ * What the vault looks like as a whole, above the entries themselves.
+ *
+ * These are counts, not secrets: how much is stored, how much of it is weak,
+ * how much of it is the same password wearing different names. A password
+ * manager that only ever shows one entry at a time can never answer those,
+ * which is how a reused password survives for years.
+ */
+function Overview({ items }: { items: VaultItem[] }) {
+  const { stepUpVerified } = useVault();
+
+  const { weak, reused } = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const item of items) {
+      counts.set(item.password, (counts.get(item.password) ?? 0) + 1);
+    }
+
+    return {
+      weak: items.filter((item) => estimateStrength(item.password).score <= 1).length,
+      // Entries sharing a password, counted as entries rather than as groups:
+      // "3 entries reuse a password" is the number that means something.
+      reused: items.filter((item) => (counts.get(item.password) ?? 0) > 1).length,
+    };
+  }, [items]);
+
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <Stat label="Entries" value={String(items.length)} />
+      <Stat
+        label="Weak"
+        value={String(weak)}
+        tone={weak > 0 ? "critical" : "positive"}
+        note={weak > 0 ? "Worth replacing" : "None"}
+      />
+      <Stat
+        label="Reused"
+        value={String(reused)}
+        tone={reused > 0 ? "caution" : "positive"}
+        note={reused > 0 ? "Share a password" : "All unique"}
+      />
+      <div className="rounded-[var(--radius)] border border-line bg-elevated raised px-3.5 py-3">
+        <p className="text-label">Passwords</p>
+        <div className="mt-2">
+          {stepUpVerified ? (
+            <Badge tone="positive">
+              <ShieldCheck className="size-3" aria-hidden />
+              Visible
+            </Badge>
+          ) : (
+            <Badge>
+              <Lock className="size-3" aria-hidden />
+              Masked
+            </Badge>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Stat({
+  label,
+  value,
+  note,
+  tone = "neutral",
+}: {
+  label: string;
+  value: string;
+  note?: string;
+  tone?: "neutral" | "positive" | "caution" | "critical";
+}) {
+  const tones = {
+    neutral: "text-ink",
+    positive: "text-ink",
+    caution: "text-caution",
+    critical: "text-critical",
+  } as const;
+
+  return (
+    <div className="rounded-[var(--radius)] border border-line bg-elevated raised px-3.5 py-3">
+      <p className="text-label">{label}</p>
+      <p className={cn("mt-1 text-2xl font-semibold tracking-tight tabular-nums", tones[tone])}>
+        {value}
+      </p>
+      {note ? <p className="mt-0.5 text-[0.6875rem] text-ink-subtle">{note}</p> : null}
+    </div>
+  );
+}
+
+/**
+ * One entry, in full.
+ *
+ * Everything the old detail dialog held is here on the surface — the dialog
+ * existed only to give these fields somewhere to be, and a card can hold them
+ * just as well without costing a click and a context switch.
+ */
+function EntryCard({
+  item,
+  onEdit,
+  onDelete,
+}: {
+  item: VaultItem;
+  onEdit: (item: VaultItem) => void;
+  onDelete: () => Promise<void>;
+}) {
+  const { stepUpVerified } = useVault();
+
+  const [confirmingReveal, setConfirmingReveal] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => {
+    if (stepUpVerified) setConfirmingReveal(false);
+  }, [stepUpVerified]);
+
+  const href = safeExternalUrl(item.url);
+  const host = hostnameOf(item.url);
+
+  return (
+    <Card className="flex w-full flex-col overflow-hidden">
+      <header className="flex items-start gap-3 border-b border-line px-3.5 py-3">
+        <span className="grid size-9 shrink-0 place-items-center rounded-[var(--radius-sm)] border border-line bg-surface text-[0.6875rem] font-medium text-ink-muted">
+          {monogram(item.name)}
+        </span>
+        <div className="min-w-0 flex-1">
+          <h3 className="truncate text-[0.9375rem] font-medium leading-snug">{item.name}</h3>
+          <p className="truncate text-xs text-ink-subtle">
+            {host ?? "No website"} · updated {formatRelativeTime(item.updatedAt)}
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-0.5">
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={`Edit ${item.name}`}
+            title="Edit"
+            onClick={() => onEdit(item)}
+          >
+            <Pencil className="size-4" aria-hidden />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={`Delete ${item.name}`}
+            title="Delete"
+            className="hover:text-critical"
+            onClick={() => setConfirmingDelete(true)}
+          >
+            <Trash2 className="size-4" aria-hidden />
+          </Button>
+        </div>
+      </header>
+
+      <div className="flex flex-1 flex-col gap-3 p-3.5">
+        {item.username ? (
+          <CopyRow label="Username" value={item.username} />
+        ) : (
+          <div className="rounded-[var(--radius)] border border-dashed border-line px-3 py-2.5">
+            <p className="text-label">Username</p>
+            <p className="mt-1 text-[0.9375rem] leading-snug text-ink-subtle">Not set</p>
+          </div>
+        )}
+
+        {/* The password is the one field worth a second question. Everything
+            else on this card is metadata a shoulder over the screen could have
+            guessed anyway. */}
+        {stepUpVerified ? (
+          <div className="space-y-2">
+            {/* Unmasked outright, not behind an eye. The confirmation that
+                got us here was the disclosure decision; making the user click
+                again once per card is the pattern this dashboard replaces. */}
+            <CopyRow label="Password" value={item.password} secret initiallyRevealed />
+            <StrengthMeter password={item.password} className="px-1" />
+          </div>
+        ) : confirmingReveal ? (
+          <StepUp
+            action={`show the password for ${item.name}`}
+            onCancel={() => setConfirmingReveal(false)}
+          />
+        ) : (
+          <div className="rounded-[var(--radius)] border border-line bg-surface">
+            <div className="flex items-center gap-3 px-3 py-2.5">
+              <div className="min-w-0 flex-1">
+                <p className="text-label">Password</p>
+                <p className="mt-1 select-none font-mono text-[0.9375rem] leading-snug tracking-tight text-ink-muted">
+                  {"•".repeat(16)}
+                </p>
+              </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="shrink-0"
+                onClick={() => setConfirmingReveal(true)}
+              >
+                <Lock className="size-3.5" aria-hidden />
+                Reveal
+              </Button>
+            </div>
+            {/* The meter reads the strength, not the password, so it can stay
+                on screen while the value itself is masked — that is the whole
+                point of putting vault health on a dashboard. */}
+            <StrengthMeter password={item.password} showDetails={false} className="px-3 pb-3" />
+          </div>
+        )}
+
+        {href ? (
+          <div className="rounded-[var(--radius)] border border-line bg-surface px-3 py-2.5">
+            <p className="text-label">Website</p>
+            <a
+              href={href}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="mt-1 inline-flex items-center gap-1.5 break-all text-[0.875rem] text-ink underline underline-offset-4 hover:no-underline"
+            >
+              {item.url}
+              <ExternalLink className="size-3.5 shrink-0" aria-hidden />
+            </a>
+          </div>
+        ) : null}
+
+        {item.notes ? (
+          <div className="rounded-[var(--radius)] border border-line bg-surface px-3 py-2.5">
+            <p className="text-label">Notes</p>
+            <p className="mt-1 line-clamp-4 whitespace-pre-wrap text-[0.8125rem] leading-relaxed text-ink-muted">
+              {item.notes}
+            </p>
+          </div>
+        ) : null}
+
+        {confirmingDelete ? (
+          <ApprovalCard
+            title="Confirm deletion"
+            question={`Delete “${item.name}” from your vault?`}
+            consequences={[
+              "The entry is removed from this device and from every other device on the next sync.",
+              "The stored password is not recoverable — it exists nowhere else in Purbo.",
+            ]}
+            confirmLabel="Delete permanently"
+            loading={deleting}
+            onCancel={() => setConfirmingDelete(false)}
+            onConfirm={async () => {
+              setDeleting(true);
+              try {
+                await onDelete();
+              } finally {
+                setDeleting(false);
+              }
+            }}
+          />
+        ) : null}
+
+        <p className="mt-auto pt-1 text-meta">
+          Created {formatRelativeTime(item.createdAt)}
+        </p>
+      </div>
+    </Card>
   );
 }
 
@@ -331,76 +524,6 @@ function SearchField({
         ) : null}
       </div>
     </div>
-  );
-}
-
-/** Icon-only action on a card: copy username, copy (or unlock) password. */
-function QuickAction({
-  label,
-  done,
-  failed,
-  onClick,
-  children,
-}: {
-  label: string;
-  done: boolean;
-  failed: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={label}
-      title={label}
-      className={cn(
-        "grid size-8 shrink-0 place-items-center rounded-[var(--radius-sm)] text-ink-subtle transition-colors",
-        "hover:bg-surface hover:text-ink",
-        failed && "text-critical hover:text-critical",
-      )}
-    >
-      {done ? <Check className="size-4 text-positive" aria-hidden /> : children}
-    </button>
-  );
-}
-
-/**
- * Blank tiles that complete the last row of the entry grid.
- *
- * The grid draws its separators as a 1px gap over a coloured container, so an
- * unfilled trailing cell would show that divider colour as a solid block.
- * These fillers paint it back to the page background at each breakpoint where
- * the row is short.
- */
-function GridFillers({ count }: { count: number }) {
-  const missingAtTwo = (2 - (count % 2)) % 2;
-  const missingAtThree = (3 - (count % 3)) % 3;
-  const missingAtFour = (4 - (count % 4)) % 4;
-
-  // A single column is never short, so every filler stays hidden at base.
-  return (
-    <>
-      {[0, 1, 2].map((index) => {
-        const atTwo = index < missingAtTwo;
-        const atThree = index < missingAtThree;
-        const atFour = index < missingAtFour;
-        if (!atTwo && !atThree && !atFour) return null;
-
-        return (
-          <li
-            key={`filler-${index}`}
-            aria-hidden
-            className={cn(
-              "hidden bg-canvas",
-              atTwo && "sm:block",
-              atThree ? "lg:block" : "lg:hidden",
-              atFour ? "xl:block" : "xl:hidden",
-            )}
-          />
-        );
-      })}
-    </>
   );
 }
 
