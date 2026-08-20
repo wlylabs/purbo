@@ -7,10 +7,10 @@ import { StatusPill } from "@/components/ui/status";
 /** Static, non-interactive preview of the vault. Purely decorative. */
 function VaultPreview() {
   const rows = [
-    { name: "GitHub", user: "daksara", host: "github.com" },
-    { name: "Figma", user: "design@studio.id", host: "figma.com" },
-    { name: "Bank BCA", user: "0812••••4471", host: "klikbca.com" },
-    { name: "Vercel", user: "daksara.dev", host: "vercel.com" },
+    { name: "Gmail", user: "rangga.saputra@gmail.com", host: "gmail.com" },
+    { name: "Tokopedia", user: "rangga.saputra", host: "tokopedia.com" },
+    { name: "Bank BCA", user: "0821••••7790", host: "klikbca.com" },
+    { name: "Instagram", user: "@rangga.saputra", host: "instagram.com" },
   ];
 
   return (
