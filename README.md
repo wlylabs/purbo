@@ -183,6 +183,32 @@ makes.
 
 This has not been independently audited. It uses standard, well-reviewed
 primitives rather than hand-rolled cryptography, but treat it accordingly.
+See `SECURITY.md` for how to report a suspected vulnerability.
+
+### Build integrity
+
+Every page load trusts JS freshly served by the origin — that is true of any
+web app, not just this one, and no amount of client-side crypto changes it.
+Browser-enforced Subresource Integrity does not fit here either: Next.js
+injects its own script tags at request time with no `integrity` attribute,
+and which chunks a page loads is not fixed ahead of time.
+
+What is checkable is whether a live deployment is serving the code in a given
+commit at all. `scripts/verify-build.mjs` builds that commit locally, crawls
+the deployment's own pages for the `_next/static/*` scripts they reference,
+fetches each one, and hashes it against the local build's copy:
+
+```bash
+git checkout <commit>
+npm ci && npm run build
+npm run verify-build -- https://your-deployment.example.com
+```
+
+A mismatch means the live site is not running the code you just built from
+that commit — reason enough to stop trusting it before typing a passphrase
+into it. This only covers scripts referenced by the crawled pages' initial
+HTML, not everything a session could eventually `import()`; see the script's
+own header comment for the exact scope.
 
 ## Running locally
 
@@ -244,9 +270,10 @@ lib/
   server/             Auth, tokens, KV driver, rate limiting, wire validation
 components/           Landing sections, vault UI, design-system primitives
 public/sw.js          Service worker — app shell only, never vault data
-scripts/              Icon generation
+scripts/              Icon generation, build-integrity verification
 proxy.ts              Per-request CSP nonce and security headers
 tests/                Crypto and key-hierarchy checks
+SECURITY.md           Vulnerability disclosure policy
 ```
 
 ## Licence
