@@ -145,6 +145,17 @@ await test("AES key import rejects a wrong-sized key", async () => {
   await assert.rejects(() => importAesKey(new Uint8Array(16)));
 });
 
+await test("open() rejects an unsupported ciphertext version", async () => {
+  const raw = new Uint8Array(32);
+  crypto.getRandomValues(raw);
+  const key = await importAesKey(raw);
+  const box = await seal(key, new TextEncoder().encode("versioned"), "ctx");
+
+  // A future or forged format version must fail closed rather than being
+  // interpreted under today's rules.
+  await assert.rejects(() => open(key, { ...box, v: 2 as never }, "ctx"));
+});
+
 // ----------------------------------------------------------------------- KDF
 
 await test("Argon2id is deterministic and salt-dependent", async () => {
@@ -184,6 +195,46 @@ await test("weak KDF parameters are refused", () => {
     assertAcceptableKdfParams({
       algorithm: "pbkdf2" as never,
       memoryKiB: 65536,
+      iterations: 3,
+      parallelism: 1,
+    }),
+  );
+});
+
+await test("KDF parameters above the ceiling are refused", () => {
+  // The ceiling exists so a hostile envelope cannot wedge the tab with a
+  // multi-gigabyte allocation under the guise of "extra security".
+  assert.throws(() =>
+    assertAcceptableKdfParams({
+      algorithm: "argon2id",
+      memoryKiB: 2 * 1024 * 1024,
+      iterations: 3,
+      parallelism: 1,
+    }),
+  );
+  assert.throws(() =>
+    assertAcceptableKdfParams({
+      algorithm: "argon2id",
+      memoryKiB: 65536,
+      iterations: 64,
+      parallelism: 1,
+    }),
+  );
+  assert.throws(() =>
+    assertAcceptableKdfParams({
+      algorithm: "argon2id",
+      memoryKiB: 65536,
+      iterations: 3,
+      parallelism: 32,
+    }),
+  );
+});
+
+await test("non-integer KDF parameters are refused", () => {
+  assert.throws(() =>
+    assertAcceptableKdfParams({
+      algorithm: "argon2id",
+      memoryKiB: 65536.5,
       iterations: 3,
       parallelism: 1,
     }),
@@ -311,7 +362,18 @@ await test("a tampered token is rejected", async () => {
     new TextEncoder().encode(JSON.stringify({ sub: "someone-else", iat: 0, exp: 2 ** 40 })),
   );
   assert.equal(await readSessionToken(`${prefix}.${forgedPayload}.${mac}`), null);
-  assert.equal(await readSessionToken(`${prefix}.${payload}.${mac.slice(0, -1)}A`), null);
+
+  // A 32-byte MAC's base64url encoding has only 4 real bits (16 possible
+  // values) in its last character, the rest being fixed padding — so forcing
+  // it to a hardcoded replacement risks a ~1-in-16 chance of "corrupting" it
+  // into the exact same character it already was. Pick a value guaranteed to
+  // differ instead of a fixed one.
+  const lastChar = mac.at(-1);
+  const flippedLastChar = lastChar === "A" ? "B" : "A";
+  assert.equal(
+    await readSessionToken(`${prefix}.${payload}.${mac.slice(0, -1)}${flippedLastChar}`),
+    null,
+  );
   assert.equal(await readSessionToken("nonsense"), null);
   assert.equal(await readSessionToken(""), null);
 });
@@ -452,6 +514,24 @@ await test("a wrong passphrase is rejected uniformly", async () => {
   );
 });
 
+await test("a compromised server cannot downgrade the KDF at unlock", async () => {
+  const phrase = createRecoveryPhrase();
+  const { envelope, keyring } = await createKeyring(phrase, "downgrade-check-1");
+
+  // The envelope is untrusted input from storage. If the server handed back
+  // weak parameters, unlocking must refuse them outright rather than quietly
+  // running Argon2id at attacker-chosen cost.
+  const weakened = {
+    ...envelope,
+    kdf: { algorithm: "argon2id" as const, memoryKiB: 8, iterations: 1, parallelism: 1 },
+  };
+
+  await assert.rejects(() => unlockWithPassphrase(keyring.accountId, weakened, "downgrade-check-1"));
+  await assert.rejects(() =>
+    exportRootMaterial(keyring.accountId, weakened, "downgrade-check-1"),
+  );
+});
+
 await test("an envelope cannot be unwrapped under another account id", async () => {
   const phrase = createRecoveryPhrase();
   const { envelope } = await createKeyring(phrase, "shared-passphrase-1");
@@ -556,14 +636,29 @@ await test("the envelope leaks no plaintext", async () => {
   const phrase = createRecoveryPhrase();
   const { envelope } = await createKeyring(phrase, "leak-check-passphrase");
   const identity = await identityFromRecoveryPhrase(phrase);
-  const serialised = JSON.stringify(envelope);
+
+  // Only the attacker-relevant bytes — salts and ciphertexts — are checked,
+  // not the whole serialised envelope. The schema's own field names are
+  // plain English ("salt", "version", "memoryKiB") and some are themselves
+  // BIP39 words, so scanning them against the wordlist would fail this test
+  // on an unlucky-but-harmless phrase draw without anything having leaked.
+  const dataFields = [
+    envelope.salt,
+    envelope.rootSalt,
+    envelope.wrapped.iv,
+    envelope.wrapped.ct,
+    envelope.verifier.iv,
+    envelope.verifier.ct,
+    envelope.auth.iv,
+    envelope.auth.ct,
+  ].join(" ");
 
   for (const word of phrase.split(" ")) {
-    assert.ok(!serialised.includes(word), `phrase word "${word}" appeared in the envelope`);
+    assert.ok(!dataFields.includes(word), `phrase word "${word}" appeared in the envelope`);
   }
-  assert.ok(!serialised.includes("leak-check-passphrase"));
+  assert.ok(!dataFields.includes("leak-check-passphrase"));
   // The signing secret is in there, but only sealed under the root key.
-  assert.ok(!serialised.includes(toBase64Url(identity.secret)));
+  assert.ok(!dataFields.includes(toBase64Url(identity.secret)));
 });
 
 // ------------------------------------------------------------------- records
