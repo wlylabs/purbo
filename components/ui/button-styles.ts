@@ -74,7 +74,10 @@ export function buttonStyles({
   className?: string;
 } = {}): string {
   return cn(
-    "inline-flex items-center justify-center font-medium whitespace-nowrap",
+    // `relative` is the positioning context the loading spinner is centred in.
+    // It costs the anchors that share these styles nothing — they have no
+    // in-flight state — and it keeps the button from having to add it itself.
+    "relative inline-flex items-center justify-center font-medium whitespace-nowrap",
     // Colour only. Nothing here moves: a control that dips under the cursor
     // is imitating a physical key, and on a touchscreen — where the press is
     // under a fingertip — the one thing it does is get hidden.
