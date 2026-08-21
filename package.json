@@ -11,6 +11,7 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "icons": "node scripts/generate-icons.mjs",
+    "screenshots": "node scripts/generate-screenshots.mjs",
     "verify-build": "node scripts/verify-build.mjs",
     "test": "node --experimental-strip-types --no-warnings --import ./tests/register.mjs tests/crypto.test.ts"
   },

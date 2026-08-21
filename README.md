@@ -168,10 +168,33 @@ end. Its rules:
 - **Updates are never applied silently.** A new worker waits until the user
   accepts the prompt, because activating it reloads the page and a reload
   discards the in-memory key — the vault would lock mid-use.
+- **Every cache is namespaced by the build it belongs to**, and the previous
+  build's caches are deleted when the new worker activates. The worker takes
+  that name from the `?v=` the page registers it with rather than from a
+  version literal, which is also what lets a deploy be noticed at all: a
+  browser looks for a new worker by comparing the script's bytes, and a static
+  `sw.js` never changes on its own. The id is the commit, so an installed app
+  left open for weeks still finds out that a new version shipped.
 
 Icons are generated from the same keyhole mark the app draws, rasterised from
 signed distance fields by `scripts/generate-icons.mjs` — `npm run icons` — so
 no image toolchain enters the dependency tree. The output is committed.
+
+The manifest's screenshots — what an install dialog shows before anyone
+commits to installing — cannot be drawn from shapes, because they are
+photographs of the running app. `scripts/generate-screenshots.mjs` retakes
+them against a local server or a deployment, and asks for a browser to be
+brought along rather than carrying one in the tree for three PNGs that change
+only when the interface does:
+
+```bash
+npm i --no-save playwright && npx playwright install chromium
+npm run build && npm start &
+npm run screenshots
+```
+
+The output is committed too, so a deploy never depends on either script
+having run.
 
 ### The trade-off
 
@@ -203,6 +226,11 @@ git checkout <commit>
 npm ci && npm run build
 npm run verify-build -- https://your-deployment.example.com
 ```
+
+The build carries its commit — `next.config.ts` reads it from the CI
+environment, or from `git rev-parse HEAD`, and inlines it — so this stays a
+byte-for-byte comparison: a rebuild of the same commit produces the same id
+and therefore the same chunks. That is the reason the id is not a timestamp.
 
 A mismatch means the live site is not running the code you just built from
 that commit — reason enough to stop trusting it before typing a passphrase
@@ -270,7 +298,8 @@ lib/
   server/             Auth, tokens, KV driver, rate limiting, wire validation
 components/           Landing sections, vault UI, design-system primitives
 public/sw.js          Service worker — app shell only, never vault data
-scripts/              Icon generation, build-integrity verification
+public/screenshots/   Manifest screenshots for the install dialog
+scripts/              Icon and screenshot generation, build-integrity verification
 proxy.ts              Per-request CSP nonce and security headers
 tests/                Crypto and key-hierarchy checks
 SECURITY.md           Vulnerability disclosure policy

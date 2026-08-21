@@ -44,7 +44,28 @@ export function ServiceWorker() {
     };
 
     void navigator.serviceWorker
-      .register("/sw.js", { scope: "/", updateViaCache: "none" })
+      /*
+       * The build id rides along on the script URL, and it is what makes an
+       * update detectable at all.
+       *
+       * A browser decides there is a new worker by comparing the bytes of the
+       * script it registered. `/sw.js` is a static file that does not change
+       * when the app around it does, so registering it bare meant a deploy
+       * shipped new code and nothing ever noticed — no `updatefound`, no
+       * waiting worker, and this component's prompt never shown. An installed
+       * app left open, which is how a password manager is used, could go on
+       * running the build it started with.
+       *
+       * Registering a different URL for the same scope updates the existing
+       * registration in place and runs the ordinary install flow, so the
+       * worker below still waits for the user rather than swapping itself in
+       * under an unlocked vault. The worker reads the same value back out of
+       * its own location and names its caches after it.
+       */
+      .register(`/sw.js?v=${process.env.NEXT_PUBLIC_BUILD_ID || "dev"}`, {
+        scope: "/",
+        updateViaCache: "none",
+      })
       .then((reg) => {
         registration = reg;
         track(reg.waiting);

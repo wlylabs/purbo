@@ -17,9 +17,30 @@
  *   navigations        network first, falling back to cache, then /offline
  *   /_next/static/*    cache first (content-hashed, immutable)
  *   same-origin assets stale-while-revalidate
+ *
+ * Every cache this worker opens is namespaced by the build it belongs to, and
+ * anything from an older build is deleted on activate. See VERSION below for
+ * where that name comes from and why it is not written down here.
  */
 
-const VERSION = "v1";
+/**
+ * This build's identity, handed over by the page as `?v=` on the script URL.
+ *
+ * It is not written here as a literal because a literal is exactly what stops
+ * working: this file is static, so a hand-maintained version only changes when
+ * somebody remembers to change it, and every deploy in between reuses the
+ * caches of the one before it and never announces itself as an update. Taking
+ * it from `self.location` instead means the file stays reproducible — the same
+ * bytes on every deploy — while still getting a different version each time.
+ *
+ * The whole cache is therefore per-build, and `activate` drops the previous
+ * build's on the way in. That costs a re-download of assets that had not
+ * actually changed; the alternative is an asset cache that no deploy ever
+ * prunes, which is not what a password manager should be growing quietly on
+ * someone's device.
+ */
+const VERSION = new URL(self.location.href).searchParams.get("v") || "dev";
+
 const SHELL_CACHE = `purbo-shell-${VERSION}`;
 const ASSET_CACHE = `purbo-assets-${VERSION}`;
 const CURRENT_CACHES = new Set([SHELL_CACHE, ASSET_CACHE]);
@@ -79,28 +100,44 @@ self.addEventListener("message", (event) => {
   if (event.data?.type === "SKIP_WAITING") void self.skipWaiting();
 });
 
+/**
+ * The cache key for a navigation: the path alone, with the query and the
+ * fragment dropped.
+ *
+ * A shell is the same document whatever the query says. Keying on the whole
+ * URL stored `/vault?tab=generator` as a second copy of `/vault`, and a link
+ * arriving with a campaign parameter as a third — one entry for every distinct
+ * URL anyone ever navigated to, in a cache that nothing prunes until the build
+ * changes.
+ *
+ * Normalising here is also what retires the special case that used to sit in
+ * the offline branch below, serving the vault's shell for anything under
+ * `/vault`. It existed for query strings, and a query string is now simply the
+ * same key; what is left under that prefix is a path the app does not route,
+ * and answering a 404 with a page belonging to another URL is the one thing
+ * the fallback is careful not to do.
+ */
+function shellKey(url) {
+  return new URL(url).pathname;
+}
+
 async function handleNavigation(event) {
   const cache = await caches.open(SHELL_CACHE);
+  const key = shellKey(event.request.url);
 
   try {
     const preloaded = await event.preloadResponse;
     const response = preloaded || (await fetch(event.request));
     // Only the shell is worth keeping, and only when the server actually
-    // served it: opaque and error responses are not cache material.
+    // served it: opaque and error responses are not cache material. A 404 is
+    // not ok, so an unrouted path never earns an entry.
     if (response.ok && response.type === "basic") {
-      cache.put(event.request, response.clone()).catch(() => {});
+      cache.put(key, response.clone()).catch(() => {});
     }
     return response;
   } catch {
-    const cached = await cache.match(event.request);
+    const cached = await cache.match(key);
     if (cached) return cached;
-
-    // The vault is one client-rendered route, so its cached shell answers
-    // any URL beneath it — /vault?tab=generator included.
-    if (new URL(event.request.url).pathname.startsWith("/vault")) {
-      const shell = await cache.match("/vault");
-      if (shell) return shell;
-    }
 
     // Anything else gets the offline page, not some other page of the app
     // rendered under a URL it does not belong to.
