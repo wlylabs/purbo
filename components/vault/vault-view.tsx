@@ -464,9 +464,9 @@ function SearchField({
         autoComplete="off"
         spellCheck={false}
         className={cn(
-          "w-full rounded-[var(--radius)] border border-line bg-elevated",
+          "w-full rounded-[var(--radius)] border border-line-control bg-elevated",
           "py-2.5 pl-9 pr-16 text-sm placeholder:text-ink-subtle transition-colors",
-          "hover:border-line-strong focus:border-ink focus:outline-none",
+          "hover:border-ink-subtle focus:border-ink focus:outline-none",
         )}
       />
 
@@ -476,7 +476,7 @@ function SearchField({
             type="button"
             onClick={() => onChange("")}
             aria-label="Clear search"
-            className="grid size-6 place-items-center rounded-[var(--radius-sm)] text-ink-subtle transition-colors hover:bg-surface hover:text-ink"
+            className="grid size-6 place-items-center rounded-[var(--radius-sm)] text-ink-subtle transition-colors hover:bg-tint hover:text-ink"
           >
             <X className="size-3.5" aria-hidden />
           </button>

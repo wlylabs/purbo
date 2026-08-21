@@ -148,9 +148,9 @@ function RouteOption({
       onClick={onClick}
       disabled={loading}
       className={cn(
-        "flex w-full items-start gap-3.5 rounded-[var(--radius)] border border-line bg-control p-4 text-left",
+        "flex w-full items-start gap-3.5 rounded-[var(--radius)] border border-line-control bg-control p-4 text-left",
         "transition-colors duration-150",
-        "hover:border-line-strong hover:bg-control-hover active:bg-control-active",
+        "hover:bg-control-hover active:bg-control-active",
         "disabled:pointer-events-none disabled:opacity-60",
       )}
     >

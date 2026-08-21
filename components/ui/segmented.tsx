@@ -119,7 +119,7 @@ export function Segmented<T extends string>({
         }
       }}
       className={cn(
-        "relative inline-flex rounded-[var(--radius)] border border-line bg-surface p-1",
+        "relative inline-flex rounded-[var(--radius)] border border-line-control bg-surface p-1",
         fill && "w-full",
         className,
       )}

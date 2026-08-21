@@ -94,7 +94,7 @@ function AccountMenu() {
         onClick={() => setOpen((value) => !value)}
         aria-expanded={open}
         aria-haspopup="menu"
-        className="flex items-center gap-2 rounded-[var(--radius-sm)] border border-line px-2.5 py-1.5 text-[0.8125rem] transition-colors hover:border-line-strong"
+        className="flex items-center gap-2 rounded-[var(--radius-sm)] border border-line-control px-2.5 py-1.5 text-[0.8125rem] transition-colors hover:bg-tint"
       >
         <span className="max-w-32 truncate font-mono text-[0.75rem] text-ink-muted">
           {short}

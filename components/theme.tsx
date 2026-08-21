@@ -46,7 +46,7 @@ export function ThemeToggle({ className }: { className?: string }) {
       role="radiogroup"
       aria-label="Colour theme"
       className={cn(
-        "inline-flex items-center gap-0.5 rounded-full border border-line bg-elevated p-0.5",
+        "inline-flex items-center gap-0.5 rounded-full border border-line-control bg-elevated p-0.5",
         className,
       )}
     >

@@ -35,10 +35,20 @@
 
   --line: #dcdce1;
   --line-strong: #bfbfc8;
+  /*
+   * The edge of a control, as opposed to the edge of a container.
+   *
+   * `--line` is a hairline between areas of a page and is allowed to be
+   * quiet. This one has to carry 3:1 against every surface a control can sit
+   * on, because it is the only thing saying where the control ends — which
+   * is exactly the distinction WCAG 1.4.11 draws, and exactly what a flat
+   * design has to state outright once the shadow under the button is gone.
+   */
+  --line-control: #85858b;
 
   --ink: #09090b;
   --ink-muted: #52525b;
-  --ink-subtle: #6d6d78;
+  --ink-subtle: #686873;
 
   /*
    * Interactive fills. Every state is spelled out rather than faked with
@@ -63,7 +73,7 @@
   --tint-strong: rgb(9 9 11 / 0.09);
 
   --positive: #047857;
-  --caution: #b45309;
+  --caution: #a4490a;
   --critical: #be123c;
   --info: #4338ca;
 
@@ -101,10 +111,11 @@
 
     --line: #26262c;
     --line-strong: #3a3a44;
+    --line-control: #636369;
 
     --ink: #fafafa;
     --ink-muted: #a1a1aa;
-    --ink-subtle: #7c7c87;
+    --ink-subtle: #7f7f8a;
 
     --control: #1b1b1f;
     --control-hover: #24242a;
@@ -142,10 +153,11 @@
 
   --line: #26262c;
   --line-strong: #3a3a44;
+  --line-control: #636369;
 
   --ink: #fafafa;
   --ink-muted: #a1a1aa;
-  --ink-subtle: #7c7c87;
+  --ink-subtle: #7f7f8a;
 
   --control: #1b1b1f;
   --control-hover: #24242a;
@@ -180,6 +192,7 @@
 
   --color-line: var(--line);
   --color-line-strong: var(--line-strong);
+  --color-line-control: var(--line-control);
 
   --color-ink: var(--ink);
   --color-ink-muted: var(--ink-muted);

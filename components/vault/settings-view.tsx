@@ -8,7 +8,7 @@ import { ThemeToggle } from "@/components/theme";
 import { ApprovalCard } from "@/components/ui/approval";
 import { Button } from "@/components/ui/button";
 import { PasswordInput } from "@/components/ui/input";
-import { Card, Chip, Notice } from "@/components/ui/primitives";
+import { Card, ChipRadioGroup, Notice } from "@/components/ui/primitives";
 import { Trace, TraceStep } from "@/components/ui/trace";
 import {
   PasskeyCancelledError,
@@ -254,20 +254,16 @@ export function SettingsView() {
           key is dropped from memory and from the tab&rsquo;s cache, so anyone who reaches
           the tab afterwards needs your passphrase or passkey again.
         </p>
-        <div role="radiogroup" aria-label="Auto-lock delay" className="mt-4 flex flex-wrap gap-2">
-          {AUTO_LOCK_CHOICES.map((choice) => (
-            <Chip
-              key={choice.minutes}
-              role="radio"
-              selected={autoLockMinutes === choice.minutes}
-              aria-checked={autoLockMinutes === choice.minutes}
-              tabIndex={autoLockMinutes === choice.minutes ? 0 : -1}
-              onClick={() => setAutoLockMinutes(choice.minutes)}
-            >
-              {choice.label}
-            </Chip>
-          ))}
-        </div>
+        <ChipRadioGroup
+          label="Auto-lock delay"
+          className="mt-4"
+          value={autoLockMinutes}
+          onChange={setAutoLockMinutes}
+          options={AUTO_LOCK_CHOICES.map((choice) => ({
+            value: choice.minutes,
+            label: choice.label,
+          }))}
+        />
         {autoLockMinutes === 0 ? (
           <Notice tone="caution" className="mt-4" icon={<AlertTriangle className="size-4" />}>
             With auto-lock off, the vault stays decrypted until you lock it or close the tab.

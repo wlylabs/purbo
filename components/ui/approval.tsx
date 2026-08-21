@@ -112,9 +112,9 @@ export function ApprovalCard({
                 autoCapitalize="characters"
                 spellCheck={false}
                 className={cn(
-                  "mt-2 w-full rounded-[var(--radius-sm)] border border-line bg-elevated px-3 py-2",
+                  "mt-2 w-full rounded-[var(--radius-sm)] border border-line-control bg-elevated px-3 py-2",
                   "font-mono text-sm placeholder:text-ink-subtle transition-colors",
-                  "hover:border-line-strong focus:border-ink focus:outline-none",
+                  "hover:border-ink-subtle focus:border-ink focus:outline-none",
                 )}
               />
             </div>

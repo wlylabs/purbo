@@ -6,9 +6,9 @@ import { forwardRef, useId, useState } from "react";
 import { cn } from "@/lib/utils";
 
 const FIELD_BASE =
-  "w-full bg-elevated border border-line rounded-[var(--radius-sm)] px-3 py-2.5 text-sm " +
+  "w-full bg-elevated border border-line-control rounded-[var(--radius-sm)] px-3 py-2.5 text-sm " +
   "text-ink placeholder:text-ink-subtle transition-colors duration-150 " +
-  "hover:border-line-strong focus:border-ink focus:outline-none " +
+  "hover:border-ink-subtle focus:border-ink focus:outline-none " +
   "disabled:opacity-50 disabled:cursor-not-allowed";
 
 export interface FieldProps {

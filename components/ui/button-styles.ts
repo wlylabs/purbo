@@ -16,11 +16,11 @@ const VARIANTS: Record<ButtonVariant, string> = {
   primary:
     "bg-invert-bg text-invert-fg border border-transparent hover:bg-invert-hover active:bg-invert-active",
   secondary:
-    "bg-control text-ink border border-line hover:bg-control-hover hover:border-line-strong active:bg-control-active",
+    "bg-control text-ink border border-line-control hover:bg-control-hover active:bg-control-active",
   ghost:
     "bg-transparent text-ink-muted border border-transparent hover:bg-tint hover:text-ink active:bg-tint-strong",
   danger:
-    "bg-transparent text-critical border border-critical/35 hover:bg-critical/10 hover:border-critical/60 active:bg-critical/[0.16]",
+    "bg-transparent text-critical border border-critical hover:bg-critical/10 active:bg-critical/[0.16]",
 };
 
 /*
