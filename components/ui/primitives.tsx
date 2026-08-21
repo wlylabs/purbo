@@ -6,23 +6,126 @@ import { useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "./button";
 
-export function Card({
-  flat = false,
-  className,
-  ...props
-}: React.HTMLAttributes<HTMLDivElement> & {
-  /** Drops the lift, for cards nested inside another raised surface. */
-  flat?: boolean;
-}) {
+/**
+ * A panel on the page.
+ *
+ * It reads as a card because its fill is a step off the canvas and a hairline
+ * closes the shape — not because it is floating. Nesting one inside another
+ * therefore needs no special case: the fills stop being different, and a
+ * hairline is all that is left, which is exactly right for a group inside a
+ * group.
+ */
+export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
+      className={cn("bg-elevated border border-line rounded-[var(--radius-lg)]", className)}
+      {...props}
+    />
+  );
+}
+
+/**
+ * A pill-shaped toggle: one option out of a row of them.
+ *
+ * The selected state is the inverted fill and nothing else — no bevel to say
+ * "pushed in", which never survived being looked at next to an unselected
+ * neighbour anyway. Role and state stay at the call site, because the same
+ * shape is a `radio` in one place (auto-lock delay: exactly one) and a
+ * `pressed` button in another (generator charsets: any number).
+ */
+export function Chip({
+  selected = false,
+  className,
+  ...props
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & { selected?: boolean }) {
+  return (
+    <button
+      type="button"
       className={cn(
-        "bg-elevated border border-line rounded-[var(--radius-lg)]",
-        !flat && "raised",
+        "rounded-full border px-3.5 py-1.5 text-[0.8125rem] font-medium",
+        "transition-colors duration-150",
+        selected
+          ? "border-transparent bg-invert-bg text-invert-fg hover:bg-invert-hover"
+          : "border-line-control bg-control text-ink-muted hover:bg-control-hover hover:text-ink",
         className,
       )}
       {...props}
     />
+  );
+}
+
+/**
+ * A row of chips where exactly one is chosen.
+ *
+ * It exists because `role="radiogroup"` is a promise: a radio group takes one
+ * tab stop and moves between its options with the arrow keys. Writing that
+ * role over a row of buttons and stopping there is worse than using no role
+ * at all — the roving `tabIndex` it implies takes the unselected options out
+ * of the tab order, and with nothing listening for arrows they become
+ * unreachable without a mouse. Keeping the behaviour in one component is what
+ * stops the next such row from making the same promise.
+ *
+ * Selection follows focus, which is what a radio group does: arrowing to an
+ * option chooses it.
+ */
+export function ChipRadioGroup<T extends string | number>({
+  label,
+  value,
+  onChange,
+  options,
+  className,
+}: {
+  /** Accessible name for the group itself. */
+  label: string;
+  value: T;
+  onChange: (next: T) => void;
+  options: { value: T; label: string }[];
+  className?: string;
+}) {
+  const activeIndex = Math.max(
+    0,
+    options.findIndex((option) => option.value === value),
+  );
+
+  const move = (event: React.KeyboardEvent<HTMLDivElement>, next: number) => {
+    event.preventDefault();
+    const option = options[(next + options.length) % options.length];
+    if (!option) return;
+    onChange(option.value);
+    // Focus follows the selection, so the next arrow press continues from
+    // where the user actually is rather than from the old option.
+    const buttons = event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="radio"]');
+    buttons[(next + options.length) % options.length]?.focus();
+  };
+
+  return (
+    <div
+      role="radiogroup"
+      aria-label={label}
+      onKeyDown={(event) => {
+        if (event.key === "ArrowRight" || event.key === "ArrowDown") move(event, activeIndex + 1);
+        else if (event.key === "ArrowLeft" || event.key === "ArrowUp") move(event, activeIndex - 1);
+        else if (event.key === "Home") move(event, 0);
+        else if (event.key === "End") move(event, options.length - 1);
+      }}
+      className={cn("flex flex-wrap gap-2", className)}
+    >
+      {options.map((option) => {
+        const selected = option.value === value;
+        return (
+          <Chip
+            key={String(option.value)}
+            role="radio"
+            selected={selected}
+            aria-checked={selected}
+            tabIndex={selected ? 0 : -1}
+            onClick={() => onChange(option.value)}
+          >
+            {option.label}
+          </Chip>
+        );
+      })}
+    </div>
   );
 }
 
@@ -126,7 +229,7 @@ export function Modal({
     >
       <div
         className={cn(
-          "bg-elevated border border-line rounded-[var(--radius-lg)] overflow-hidden raised-modal",
+          "bg-elevated border border-line rounded-[var(--radius-lg)] overflow-hidden shadow-modal",
           "max-h-[85vh] flex flex-col",
           className,
         )}

@@ -4,10 +4,11 @@ import { AlertTriangle, Check, Download, Fingerprint } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import { InstallSection } from "@/components/pwa/install-prompt";
+import { ThemeToggle } from "@/components/theme";
 import { ApprovalCard } from "@/components/ui/approval";
 import { Button } from "@/components/ui/button";
 import { PasswordInput } from "@/components/ui/input";
-import { Card, Notice } from "@/components/ui/primitives";
+import { Card, ChipRadioGroup, Notice } from "@/components/ui/primitives";
 import { Trace, TraceStep } from "@/components/ui/trace";
 import {
   PasskeyCancelledError,
@@ -16,7 +17,6 @@ import {
 } from "@/lib/auth/passkey";
 import { DEFAULT_KDF_PARAMS } from "@/lib/crypto/kdf";
 import { useVault } from "@/lib/vault/provider";
-import { cn } from "@/lib/utils";
 import type { PasskeySummary } from "@/lib/vault/types";
 import { StepUp } from "./step-up";
 
@@ -254,27 +254,16 @@ export function SettingsView() {
           key is dropped from memory and from the tab&rsquo;s cache, so anyone who reaches
           the tab afterwards needs your passphrase or passkey again.
         </p>
-        <div role="radiogroup" aria-label="Auto-lock delay" className="mt-4 flex flex-wrap gap-2">
-          {AUTO_LOCK_CHOICES.map((choice) => (
-            <button
-              key={choice.minutes}
-              type="button"
-              role="radio"
-              aria-checked={autoLockMinutes === choice.minutes}
-              tabIndex={autoLockMinutes === choice.minutes ? 0 : -1}
-              onClick={() => setAutoLockMinutes(choice.minutes)}
-              className={cn(
-                "rounded-[var(--radius-sm)] border px-3 py-1.5 text-[0.8125rem] font-medium",
-                "transition-[background-color,border-color,color,transform] duration-150 active:translate-y-px",
-                autoLockMinutes === choice.minutes
-                  ? "border-transparent bg-invert-bg text-invert-fg raised"
-                  : "border-line bg-elevated text-ink-muted raised hover:border-line-strong hover:text-ink",
-              )}
-            >
-              {choice.label}
-            </button>
-          ))}
-        </div>
+        <ChipRadioGroup
+          label="Auto-lock delay"
+          className="mt-4"
+          value={autoLockMinutes}
+          onChange={setAutoLockMinutes}
+          options={AUTO_LOCK_CHOICES.map((choice) => ({
+            value: choice.minutes,
+            label: choice.label,
+          }))}
+        />
         {autoLockMinutes === 0 ? (
           <Notice tone="caution" className="mt-4" icon={<AlertTriangle className="size-4" />}>
             With auto-lock off, the vault stays decrypted until you lock it or close the tab.
@@ -392,6 +381,23 @@ export function SettingsView() {
       </section>
 
       <PasskeySection />
+
+      {/*
+        The header carries this control too, but only from `sm` up — there is
+        no room for it beside the sync state and the lock button on a phone.
+        Installed on a phone is exactly where Purbo spends most of its life,
+        so without a home here the theme would be unreachable on the device
+        that uses it most.
+      */}
+      <Card className="flex flex-wrap items-center justify-between gap-4 p-5 sm:p-6">
+        <div className="min-w-0">
+          <h2 className="text-[0.9375rem] font-semibold tracking-tight">Appearance</h2>
+          <p className="mt-1 text-[0.8125rem] leading-relaxed text-ink-muted">
+            Stored in this browser only. &ldquo;System&rdquo; follows the device.
+          </p>
+        </div>
+        <ThemeToggle />
+      </Card>
 
       <Card className="p-5 sm:p-6">
         <InstallSection />

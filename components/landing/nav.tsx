@@ -55,7 +55,7 @@ export function Nav() {
               <a
                 key={link.href}
                 href={link.href}
-                className="rounded-md px-3 py-2 text-[0.8125rem] text-ink-muted transition-colors hover:text-ink"
+                className="rounded-[var(--radius-sm)] px-3 py-2 text-[0.8125rem] text-ink-muted transition-colors hover:bg-tint hover:text-ink"
               >
                 {link.label}
               </a>
@@ -88,7 +88,7 @@ export function Nav() {
                 key={link.href}
                 href={link.href}
                 onClick={() => setMenuOpen(false)}
-                className="block rounded-md px-3 py-2.5 text-sm text-ink-muted hover:bg-surface hover:text-ink"
+                className="block rounded-[var(--radius-sm)] px-3 py-2.5 text-sm text-ink-muted transition-colors hover:bg-tint hover:text-ink"
               >
                 {link.label}
               </a>

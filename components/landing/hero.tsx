@@ -1,6 +1,7 @@
 import { Check, Lock } from "lucide-react";
 
 import { VaultLink } from "@/components/vault-link";
+import { buttonStyles } from "@/components/ui/button-styles";
 import { Badge } from "@/components/ui/primitives";
 import { StatusPill } from "@/components/ui/status";
 
@@ -16,7 +17,7 @@ function VaultPreview() {
   return (
     <div
       aria-hidden
-      className="select-none overflow-hidden rounded-[var(--radius-lg)] border border-line bg-elevated raised-float"
+      className="select-none overflow-hidden rounded-[var(--radius-lg)] border border-line bg-elevated"
     >
       <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-3">
         <div className="flex items-center gap-2">
@@ -84,10 +85,10 @@ export function Hero() {
 
             <div className="mt-7 flex flex-col gap-3 sm:mt-8 sm:flex-row">
               <VaultLink size="lg" label="Create your vault" />
-              <a
-                href="#how"
-                className="inline-flex h-12 items-center justify-center rounded-[var(--radius)] border border-line bg-elevated raised px-6 text-[0.9375rem] font-medium text-ink transition-[background-color,border-color,transform] duration-150 hover:border-line-strong hover:bg-surface active:translate-y-px"
-              >
+              {/* The same styles the real buttons use, on a real anchor —
+                  a hand-rolled copy is what drifts the moment the button
+                  variants change. */}
+              <a href="#how" className={buttonStyles({ variant: "secondary", size: "lg" })}>
                 See how it works
               </a>
             </div>

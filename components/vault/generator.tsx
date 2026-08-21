@@ -4,7 +4,7 @@ import { Check, Copy, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/primitives";
+import { Card, Chip } from "@/components/ui/primitives";
 import { Segmented, segmentedIds } from "@/components/ui/segmented";
 import { StatusPill } from "@/components/ui/status";
 import { BIP39_WORDLIST } from "@/lib/crypto/mnemonic";
@@ -191,21 +191,15 @@ export function Generator({
 
             <div className="flex flex-wrap gap-2">
               {TOGGLES.map(({ key, label }) => (
-                <button
+                <Chip
                   key={key}
-                  type="button"
+                  selected={Boolean(options[key])}
                   onClick={() => toggle(key)}
                   aria-pressed={Boolean(options[key])}
-                  className={cn(
-                    "rounded-[var(--radius-sm)] border px-3 py-1.5 font-mono text-xs",
-                    "transition-[background-color,border-color,color,transform] duration-150 active:translate-y-px",
-                    options[key]
-                      ? "border-transparent bg-invert-bg text-invert-fg raised"
-                      : "border-line bg-elevated text-ink-subtle raised hover:border-line-strong hover:text-ink",
-                  )}
+                  className="font-mono text-xs"
                 >
                   {label}
-                </button>
+                </Chip>
               ))}
             </div>
 

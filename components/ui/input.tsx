@@ -6,9 +6,9 @@ import { forwardRef, useId, useState } from "react";
 import { cn } from "@/lib/utils";
 
 const FIELD_BASE =
-  "w-full bg-elevated border border-line rounded-[var(--radius-sm)] px-3 py-2.5 text-sm " +
+  "w-full bg-elevated border border-line-control rounded-[var(--radius-sm)] px-3 py-2.5 text-sm " +
   "text-ink placeholder:text-ink-subtle transition-colors duration-150 " +
-  "hover:border-line-strong focus:border-ink focus:outline-none " +
+  "hover:border-ink-subtle focus:border-ink focus:outline-none " +
   "disabled:opacity-50 disabled:cursor-not-allowed";
 
 export interface FieldProps {
@@ -116,7 +116,7 @@ export const PasswordInput = forwardRef<HTMLInputElement, PasswordInputProps>(
             className={cn(
               "absolute right-1 top-1/2 -translate-y-1/2 grid place-items-center",
               "size-8 rounded-[var(--radius-sm)] text-ink-subtle",
-              "hover:text-ink hover:bg-surface transition-colors",
+              "transition-colors hover:bg-tint hover:text-ink active:bg-tint-strong",
             )}
           >
             {revealed ? (

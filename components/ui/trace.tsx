@@ -30,7 +30,7 @@ export function Trace({
   return (
     <ol
       className={cn(
-        "relative overflow-hidden rounded-[var(--radius-lg)] border border-line bg-elevated raised",
+        "relative overflow-hidden rounded-[var(--radius-lg)] border border-line bg-elevated",
         className,
       )}
     >
@@ -142,7 +142,7 @@ export function TraceStep({
         <summary
           className={cn(
             "flex cursor-pointer list-none gap-3 px-4 py-3.5 transition-colors sm:px-5",
-            "hover:bg-surface [&::-webkit-details-marker]:hidden",
+            "hover:bg-tint [&::-webkit-details-marker]:hidden",
           )}
         >
           {marker}

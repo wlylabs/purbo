@@ -82,7 +82,7 @@ export function ServiceWorker() {
       role="status"
       className="pointer-events-none fixed inset-x-0 bottom-0 z-50 flex justify-center px-4 pb-[calc(1rem+env(safe-area-inset-bottom))]"
     >
-      <div className="animate-in-up pointer-events-auto flex items-center gap-3 rounded-full border border-line bg-elevated py-2 pl-4 pr-2 shadow-sm">
+      <div className="animate-in-up pointer-events-auto flex items-center gap-3 rounded-full border border-line bg-elevated py-2 pl-4 pr-2 shadow-pop">
         <p className="text-[0.8125rem] text-ink-muted">
           A new version is ready.
           <span className="hidden sm:inline"> Reloading locks the vault.</span>

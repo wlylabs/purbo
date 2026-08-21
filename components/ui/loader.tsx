@@ -28,7 +28,7 @@ export function Skeleton({
 /** A placeholder in the shape of one vault entry. */
 export function SkeletonRow() {
   return (
-    <div className="flex items-center gap-3 bg-canvas p-4">
+    <div className="flex items-center gap-3 bg-elevated p-4">
       <Skeleton className="size-9 shrink-0" />
       <div className="min-w-0 flex-1 space-y-2">
         <Skeleton className="h-3 w-28 rounded-full" />

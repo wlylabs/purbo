@@ -185,7 +185,7 @@ export function LockScreen() {
         {mode === "unlock" ? (
           <form onSubmit={submitUnlock} className="space-y-6">
             <div className="space-y-3">
-              <div className="grid size-10 place-items-center rounded-[var(--radius)] border border-line bg-surface raised">
+              <div className="grid size-10 place-items-center rounded-[var(--radius)] border border-line bg-surface">
                 <Lock className="size-4" aria-hidden />
               </div>
               <div className="space-y-1.5">

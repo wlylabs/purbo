@@ -14,7 +14,6 @@ import {
   type Tone,
 } from "@/components/ui/status";
 import { useVault, type SyncState } from "@/lib/vault/provider";
-import { cn } from "@/lib/utils";
 
 const SYNC_LABELS: Record<SyncState, { text: string; tone: Tone; live: boolean }> = {
   idle: { text: "Synced", tone: "positive", live: false },
@@ -95,7 +94,7 @@ function AccountMenu() {
         onClick={() => setOpen((value) => !value)}
         aria-expanded={open}
         aria-haspopup="menu"
-        className="flex items-center gap-2 rounded-[var(--radius-sm)] border border-line px-2.5 py-1.5 text-[0.8125rem] transition-colors hover:border-line-strong"
+        className="flex items-center gap-2 rounded-[var(--radius-sm)] border border-line-control px-2.5 py-1.5 text-[0.8125rem] transition-colors hover:bg-tint"
       >
         <span className="max-w-32 truncate font-mono text-[0.75rem] text-ink-muted">
           {short}
@@ -106,7 +105,7 @@ function AccountMenu() {
       {open ? (
         <div
           role="menu"
-          className="absolute right-0 top-full z-50 mt-2 w-72 overflow-hidden rounded-[var(--radius)] border border-line bg-elevated raised-float animate-in-up"
+          className="absolute right-0 top-full z-50 mt-2 w-72 overflow-hidden rounded-[var(--radius)] border border-line bg-elevated shadow-pop animate-in-up"
         >
           <div className="border-b border-line px-3 py-2.5">
             <p className="text-[0.8125rem] font-medium">Account</p>
@@ -134,7 +133,7 @@ function AccountMenu() {
                 setOpen(false);
               }
             }}
-            className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[0.8125rem] text-ink-muted transition-colors hover:bg-surface hover:text-ink disabled:opacity-50"
+            className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[0.8125rem] text-ink-muted transition-colors hover:bg-tint hover:text-ink disabled:opacity-50"
           >
             <Trash2 className="size-3.5" aria-hidden />
             Forget this device

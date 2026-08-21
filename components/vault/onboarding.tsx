@@ -148,9 +148,9 @@ function RouteOption({
       onClick={onClick}
       disabled={loading}
       className={cn(
-        "flex w-full items-start gap-3.5 rounded-[var(--radius)] border border-line bg-elevated p-4 text-left raised",
-        "transition-[background-color,border-color,transform] duration-150",
-        "hover:border-line-strong hover:bg-surface active:translate-y-px",
+        "flex w-full items-start gap-3.5 rounded-[var(--radius)] border border-line-control bg-control p-4 text-left",
+        "transition-colors duration-150",
+        "hover:bg-control-hover active:bg-control-active",
         "disabled:pointer-events-none disabled:opacity-60",
       )}
     >
@@ -501,7 +501,7 @@ function CreateFlow({ onBack }: { onBack: () => void }) {
                 // ordering is the thing that has to be copied correctly.
                 key={revealed ? "revealed" : "hidden"}
                 className={cn(
-                  "grid grid-cols-2 gap-px overflow-hidden rounded-[var(--radius)] border border-line bg-line raised sm:grid-cols-3",
+                  "grid grid-cols-2 gap-px overflow-hidden rounded-[var(--radius)] border border-line bg-line sm:grid-cols-3",
                   revealed ? "stagger" : "blur-sm select-none",
                 )}
                 aria-hidden={!revealed}
@@ -526,7 +526,7 @@ function CreateFlow({ onBack }: { onBack: () => void }) {
                   onClick={() => setRevealed(true)}
                   className="absolute inset-0 grid place-items-center rounded-[var(--radius)] bg-canvas/40"
                 >
-                  <span className="inline-flex items-center gap-2 rounded-full border border-line bg-elevated px-4 py-2 text-[0.8125rem] font-medium raised-float">
+                  <span className="inline-flex items-center gap-2 rounded-full border border-line bg-elevated px-4 py-2 text-[0.8125rem] font-medium shadow-pop">
                     <Eye className="size-4" aria-hidden />
                     Tap to reveal
                   </span>
