@@ -159,14 +159,20 @@ export function Segmented<T extends string>({
             onClick={() => onChange(item.id)}
             className={cn(
               "relative z-10 inline-flex items-center justify-center gap-2 rounded-[calc(var(--radius)-0.25rem)]",
-              "px-3 py-1.5 text-[0.8125rem] font-medium transition-colors duration-200",
+              "px-3 py-1.5 text-[0.8125rem] font-medium interactive",
               // `min-w-0` is what lets a filled strip actually divide the
               // width. A flex item defaults to min-width:auto and refuses to
               // shrink below its label, so on a narrow phone two long labels
               // overflow the strip and collide with the travelling pill
               // instead of wrapping inside their own half.
               fill && "min-w-0 flex-1",
-              selected ? "text-invert-fg" : "text-ink-muted hover:text-ink",
+              // Only the unselected segments take a press fill, and for a
+              // rendering reason rather than a philosophical one: the pill is
+              // painted behind the buttons, so a tint on the selected segment
+              // would be laid over the fill that already says it is chosen and
+              // would simply muddy it. The tabs, which have no such pill, do
+              // answer a press on the tab already open.
+              selected ? "text-invert-fg" : "text-ink-muted hover:text-ink active:bg-tint",
             )}
           >
             {Icon ? <Icon className="size-3.5" /> : null}

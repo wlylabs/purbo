@@ -94,7 +94,7 @@ function AccountMenu() {
         onClick={() => setOpen((value) => !value)}
         aria-expanded={open}
         aria-haspopup="menu"
-        className="flex items-center gap-2 rounded-[var(--radius-sm)] border border-line-control px-2.5 py-1.5 text-[0.8125rem] transition-colors hover:bg-tint"
+        className="flex items-center gap-2 rounded-[var(--radius-sm)] border border-line-control px-2.5 py-1.5 text-[0.8125rem] interactive hover:bg-tint active:bg-tint-strong"
       >
         <span className="max-w-32 truncate font-mono text-[0.75rem] text-ink-muted">
           {short}
@@ -133,7 +133,7 @@ function AccountMenu() {
                 setOpen(false);
               }
             }}
-            className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[0.8125rem] text-ink-muted transition-colors hover:bg-tint hover:text-ink disabled:opacity-50"
+            className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[0.8125rem] text-ink-muted interactive hover:bg-tint hover:text-ink active:bg-tint-strong disabled:pointer-events-none disabled:text-ink-subtle"
           >
             <Trash2 className="size-3.5" aria-hidden />
             Forget this device

@@ -136,7 +136,14 @@ export function Tabs<T extends string>({
             onClick={() => onChange(item.id)}
             className={cn(
               "relative inline-flex items-center justify-center gap-2 whitespace-nowrap",
-              "px-3 pb-3 pt-2.5 text-[0.8125rem] font-medium transition-colors duration-200",
+              "px-3 pb-3 pt-2.5 text-[0.8125rem] font-medium interactive",
+              // The radius only ever shows during a press — there is no
+              // resting fill for it to round. It is here because the press
+              // fill is: on a touchscreen `hover:` never matches, so without
+              // an `active:` state a tap on a tab does nothing at all until
+              // the marker starts travelling, which is a frame or two later
+              // and somewhere else on the screen.
+              "rounded-[var(--radius-sm)] active:bg-tint",
               "sm:px-4 sm:text-sm",
               // Even thirds on a phone, where the bar is the width of the
               // screen and thumbs need the target; natural width from `sm` up,

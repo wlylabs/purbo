@@ -276,7 +276,7 @@ export function Faq() {
         <div className="mt-8 divide-line overflow-hidden rounded-[var(--radius-lg)] border border-line bg-elevated sm:mt-12">
           {items.map((item) => (
             <details key={item.q} className="group">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 text-[0.9375rem] font-medium transition-colors hover:bg-tint sm:px-6 sm:py-5 [&::-webkit-details-marker]:hidden">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 text-[0.9375rem] font-medium interactive hover:bg-tint active:bg-tint-strong sm:px-6 sm:py-5 [&::-webkit-details-marker]:hidden">
                 {item.q}
                 {/* A plus that loses its vertical stroke on open, so the
                     control animates into a minus instead of swapping glyphs. */}

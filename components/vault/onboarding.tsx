@@ -149,9 +149,12 @@ function RouteOption({
       disabled={loading}
       className={cn(
         "flex w-full items-start gap-3.5 rounded-[var(--radius)] border border-line-control bg-control p-4 text-left",
-        "transition-colors duration-150",
+        "interactive",
         "hover:bg-control-hover active:bg-control-active",
-        "disabled:pointer-events-none disabled:opacity-60",
+        // Recessed rather than faded, for the same reason the button variants
+        // are: a 60%-opacity card is not a disabled card, it is a card in a
+        // colour the palette does not contain.
+        "disabled:pointer-events-none disabled:border-line disabled:bg-surface disabled:text-ink-subtle",
       )}
     >
       <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-[var(--radius-sm)] border border-line bg-surface">
@@ -524,7 +527,7 @@ function CreateFlow({ onBack }: { onBack: () => void }) {
                 <button
                   type="button"
                   onClick={() => setRevealed(true)}
-                  className="absolute inset-0 grid place-items-center rounded-[var(--radius)] bg-canvas/40"
+                  className="interactive absolute inset-0 grid place-items-center rounded-[var(--radius)] bg-canvas/40 active:bg-canvas/60"
                 >
                   <span className="inline-flex items-center gap-2 rounded-full border border-line bg-elevated px-4 py-2 text-[0.8125rem] font-medium shadow-pop">
                     <Eye className="size-4" aria-hidden />

@@ -3,6 +3,7 @@ import { CloudOff } from "lucide-react";
 import Link from "next/link";
 
 import { Wordmark } from "@/components/logo";
+import { buttonStyles } from "@/components/ui/button-styles";
 import { Card } from "@/components/ui/primitives";
 
 export const metadata: Metadata = {
@@ -34,10 +35,12 @@ export default function OfflinePage() {
             back online.
           </p>
 
-          <Link
-            href="/vault"
-            className="mt-6 inline-flex h-11 w-full items-center justify-center rounded-[var(--radius)] bg-invert-bg text-sm font-medium text-invert-fg transition-opacity hover:opacity-90"
-          >
+          {/* Borrows the button's own styles rather than restating them.
+              What it used to restate was a hover built out of `opacity`,
+              which is the one thing the palette rules out — a 90%-opaque
+              black on this card is simply a different colour, and it left
+              the control with nothing at all to say on a press. */}
+          <Link href="/vault" className={buttonStyles({ size: "lg", className: "mt-6 w-full" })}>
             Open vault
           </Link>
         </Card>

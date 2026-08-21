@@ -41,7 +41,7 @@ export function Footer() {
               href={REPO_URL}
               target="_blank"
               rel="noreferrer noopener"
-              className="mt-4 inline-flex items-center gap-2 text-[0.8125rem] text-ink-muted transition-colors hover:text-ink"
+              className="mt-4 inline-flex items-center gap-2 text-[0.8125rem] text-ink-muted interactive hover:text-ink active:text-ink"
             >
               <Code2 className="size-3.5 shrink-0" aria-hidden />
               Read the source
@@ -59,7 +59,7 @@ export function Footer() {
                       {...("external" in link && link.external
                         ? { target: "_blank", rel: "noreferrer noopener" }
                         : {})}
-                      className="text-[0.8125rem] text-ink-muted transition-colors hover:text-ink"
+                      className="text-[0.8125rem] text-ink-muted interactive hover:text-ink active:text-ink"
                     >
                       {link.label}
                     </a>
