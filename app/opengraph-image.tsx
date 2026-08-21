@@ -15,8 +15,8 @@ export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
 const CANVAS = "#09090b";
-const ELEVATED = "#141418";
-const LINE = "#1f1f25";
+const ELEVATED = "#161619";
+const LINE = "#26262c";
 const INK = "#fafafa";
 const INK_MUTED = "#a1a1aa";
 const POSITIVE = "#34d399";

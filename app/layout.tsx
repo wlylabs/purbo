@@ -67,7 +67,10 @@ export const viewport: Viewport = {
   initialScale: 1,
   viewportFit: "cover",
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    // --canvas from app/globals.css, per theme. A mismatch here paints a
+    // seam across the top of the screen on mobile, where the browser bar
+    // takes this colour and the page underneath takes the token.
+    { media: "(prefers-color-scheme: light)", color: "#f4f4f5" },
     { media: "(prefers-color-scheme: dark)", color: "#09090b" },
   ],
 };
