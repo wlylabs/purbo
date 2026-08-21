@@ -56,6 +56,19 @@ export function Segmented<T extends string>({
     items.findIndex((item) => item.id === value),
   );
 
+  /*
+   * What the measurement depends on is which items are in the strip, not
+   * which array object carries them.
+   *
+   * Keying the effect on the array itself is a trap, because writing the
+   * items inline at the call site is the obvious thing to do: a fresh array
+   * every render re-runs the effect, the effect sets state, the state renders
+   * again, and React cuts the loop off — leaving the indicator unmeasured and
+   * therefore transparent, with the selected label still painted in the
+   * colour that only works on top of it.
+   */
+  const itemKey = items.map((item) => item.id).join("\u0000");
+
   useIsomorphicLayoutEffect(() => {
     const list = listRef.current;
     if (!list) return;
@@ -63,7 +76,13 @@ export function Segmented<T extends string>({
     const measure = () => {
       const active = list.querySelector<HTMLButtonElement>('[data-active="true"]');
       if (!active) return;
-      setIndicator({ left: active.offsetLeft, width: active.offsetWidth });
+      const next = { left: active.offsetLeft, width: active.offsetWidth };
+      // The observer fires on every layout pass, most of which change
+      // nothing; re-rendering on those would restart the pill's transition
+      // mid-travel.
+      setIndicator((current) =>
+        current && current.left === next.left && current.width === next.width ? current : next,
+      );
     };
 
     measure();
@@ -73,7 +92,7 @@ export function Segmented<T extends string>({
     observer.observe(list);
     for (const child of list.children) observer.observe(child);
     return () => observer.disconnect();
-  }, [value, items]);
+  }, [value, itemKey]);
 
   const move = (delta: number) => {
     const next = items[(activeIndex + delta + items.length) % items.length];
@@ -111,7 +130,7 @@ export function Segmented<T extends string>({
         aria-hidden
         className={cn(
           "pointer-events-none absolute inset-y-1 rounded-[calc(var(--radius)-0.25rem)]",
-          "bg-invert-bg raised",
+          "bg-invert-bg",
           indicator ? "opacity-100" : "opacity-0",
           "transition-[transform,width,opacity] duration-[250ms] ease-[cubic-bezier(0.16,1,0.3,1)]",
         )}

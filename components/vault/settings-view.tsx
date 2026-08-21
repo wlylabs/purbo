@@ -7,7 +7,7 @@ import { InstallSection } from "@/components/pwa/install-prompt";
 import { ApprovalCard } from "@/components/ui/approval";
 import { Button } from "@/components/ui/button";
 import { PasswordInput } from "@/components/ui/input";
-import { Card, Notice } from "@/components/ui/primitives";
+import { Card, Chip, Notice } from "@/components/ui/primitives";
 import { Trace, TraceStep } from "@/components/ui/trace";
 import {
   PasskeyCancelledError,
@@ -16,7 +16,6 @@ import {
 } from "@/lib/auth/passkey";
 import { DEFAULT_KDF_PARAMS } from "@/lib/crypto/kdf";
 import { useVault } from "@/lib/vault/provider";
-import { cn } from "@/lib/utils";
 import type { PasskeySummary } from "@/lib/vault/types";
 import { StepUp } from "./step-up";
 
@@ -256,23 +255,16 @@ export function SettingsView() {
         </p>
         <div role="radiogroup" aria-label="Auto-lock delay" className="mt-4 flex flex-wrap gap-2">
           {AUTO_LOCK_CHOICES.map((choice) => (
-            <button
+            <Chip
               key={choice.minutes}
-              type="button"
               role="radio"
+              selected={autoLockMinutes === choice.minutes}
               aria-checked={autoLockMinutes === choice.minutes}
               tabIndex={autoLockMinutes === choice.minutes ? 0 : -1}
               onClick={() => setAutoLockMinutes(choice.minutes)}
-              className={cn(
-                "rounded-[var(--radius-sm)] border px-3 py-1.5 text-[0.8125rem] font-medium",
-                "transition-[background-color,border-color,color,transform] duration-150 active:translate-y-px",
-                autoLockMinutes === choice.minutes
-                  ? "border-transparent bg-invert-bg text-invert-fg raised"
-                  : "border-line bg-elevated text-ink-muted raised hover:border-line-strong hover:text-ink",
-              )}
             >
               {choice.label}
-            </button>
+            </Chip>
           ))}
         </div>
         {autoLockMinutes === 0 ? (

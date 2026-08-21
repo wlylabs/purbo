@@ -146,7 +146,7 @@ function RowAction({
       aria-label={label}
       className={cn(
         "grid size-8 place-items-center rounded-[var(--radius-sm)] text-ink-subtle",
-        "transition-colors hover:bg-elevated hover:text-ink",
+        "transition-colors hover:bg-tint hover:text-ink active:bg-tint-strong",
       )}
     >
       {children}

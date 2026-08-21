@@ -3,30 +3,64 @@
 /*
  * Purbo design tokens.
  *
- * Monochrome base, one inverted primary, colour reserved for meaning
- * (strength, sync state, danger). Surfaces are separated by 1px borders and
- * lifted by a *neutral* shadow plus a 1px inset highlight along the top edge —
- * the depth cue is achromatic on purpose. Still no coloured glows and no
- * gradient fills on interactive elements.
+ * The system is flat on purpose. A surface is told apart from the one behind
+ * it by its fill and a 1px hairline — never by a bevel. There is no inset
+ * catch-light, no emboss, and no control that dips a pixel when you press it:
+ * a button here is a coloured area, not a moulded key.
+ *
+ * What a press changes is the fill. That is a state the eye resolves at a
+ * glance and that survives a high-contrast mode, a zoomed viewport and a
+ * screenshot — none of which is true of a one-pixel shift.
+ *
+ * Shadow is reserved for the three things that genuinely float above the
+ * page — dialog, popover, toast — where it is the only cue that what is
+ * behind them is temporarily out of reach.
+ *
+ * Colour stays reserved for meaning (strength, sync state, danger).
  */
 
 :root {
   color-scheme: light;
 
-  --canvas: #ffffff;
-  --surface: #fafafa;
+  /*
+   * Three tonal steps, spaced far enough apart that fill alone does the
+   * separating: `canvas` is the page, `elevated` is a card sitting on it,
+   * `surface` is a well cut back into one — a field track, an icon tile, a
+   * section that alternates against its neighbours.
+   */
+  --canvas: #f4f4f5;
+  --surface: #eeeef1;
   --elevated: #ffffff;
-  --overlay: rgb(9 9 11 / 0.4);
+  --overlay: rgb(9 9 11 / 0.45);
 
-  --line: #e6e6e9;
-  --line-strong: #d1d1d6;
+  --line: #dcdce1;
+  --line-strong: #bfbfc8;
 
   --ink: #09090b;
   --ink-muted: #52525b;
-  --ink-subtle: #8a8a93;
+  --ink-subtle: #6d6d78;
 
-  --invert-bg: #09090b;
+  /*
+   * Interactive fills. Every state is spelled out rather than faked with
+   * opacity, because a translucent control takes the colour of whatever it
+   * happens to be sitting on and stops being the same button page to page.
+   */
+  --control: #ffffff;
+  --control-hover: #f0f0f3;
+  --control-active: #e4e4ea;
+
+  --invert-bg: #18181b;
+  --invert-hover: #2c2c33;
+  --invert-active: #3d3d45;
   --invert-fg: #fafafa;
+
+  /*
+   * Wash for controls whose resting state is transparent — ghost buttons,
+   * menu rows, disclosure headers. Translucent on purpose here: these sit on
+   * every surface in the app and have to darken whichever one they land on.
+   */
+  --tint: rgb(9 9 11 / 0.05);
+  --tint-strong: rgb(9 9 11 / 0.09);
 
   --positive: #047857;
   --caution: #b45309;
@@ -35,43 +69,54 @@
 
   --ring: #09090b;
 
-  --radius: 0.75rem;
-  --radius-sm: 0.5rem;
-  --radius-lg: 1rem;
+  /* Tight radii. Soft corners read as moulded plastic; these read as cut. */
+  --radius: 0.5rem;
+  --radius-sm: 0.375rem;
+  --radius-lg: 0.75rem;
 
-  /* Depth. Achromatic, and small enough that a card still reads as flat
-     paper rather than a floating panel. */
-  --shadow-sm: 0 1px 2px -1px rgb(9 9 11 / 0.08), 0 1px 1px rgb(9 9 11 / 0.04);
-  --shadow-md: 0 1px 2px -1px rgb(9 9 11 / 0.08), 0 6px 16px -6px rgb(9 9 11 / 0.1);
-  --shadow-lg: 0 2px 4px -2px rgb(9 9 11 / 0.1), 0 18px 40px -12px rgb(9 9 11 / 0.16);
-
-  /* The 1px catch-light along a raised edge. In light mode it is the paper
-     under the border; in dark mode it is the only thing separating two
-     near-black surfaces. */
-  --highlight: rgb(255 255 255 / 0.9);
+  /*
+   * The only two shadows in the system. Diffuse and achromatic — they say
+   * "this is in front", not "this is embossed", so there is no inset
+   * companion highlight to go with them.
+   */
+  --depth-pop: 0 4px 14px -4px rgb(9 9 11 / 0.14), 0 1px 3px rgb(9 9 11 / 0.06);
+  --depth-modal: 0 24px 56px -16px rgb(9 9 11 / 0.24), 0 2px 8px -4px rgb(9 9 11 / 0.1);
 
   /* Travelling band used by skeletons. */
   --shimmer: rgb(9 9 11 / 0.06);
 }
 
+/*
+ * Dark palette. Declared twice on purpose: once for the system preference and
+ * once for an explicit choice, so the toggle wins in both directions.
+ */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
 
     --canvas: #09090b;
-    --surface: #0e0e11;
-    --elevated: #141418;
-    --overlay: rgb(0 0 0 / 0.7);
+    --surface: #101014;
+    --elevated: #161619;
+    --overlay: rgb(0 0 0 / 0.72);
 
-    --line: #1f1f25;
-    --line-strong: #2e2e37;
+    --line: #26262c;
+    --line-strong: #3a3a44;
 
     --ink: #fafafa;
     --ink-muted: #a1a1aa;
-    --ink-subtle: #6e6e78;
+    --ink-subtle: #7c7c87;
+
+    --control: #1b1b1f;
+    --control-hover: #24242a;
+    --control-active: #2d2d35;
 
     --invert-bg: #fafafa;
+    --invert-hover: #e2e2e7;
+    --invert-active: #cbcbd2;
     --invert-fg: #09090b;
+
+    --tint: rgb(250 250 250 / 0.06);
+    --tint-strong: rgb(250 250 250 / 0.11);
 
     --positive: #34d399;
     --caution: #fbbf24;
@@ -80,11 +125,9 @@
 
     --ring: #fafafa;
 
-    --shadow-sm: 0 1px 2px -1px rgb(0 0 0 / 0.5), 0 1px 1px rgb(0 0 0 / 0.3);
-    --shadow-md: 0 1px 2px -1px rgb(0 0 0 / 0.5), 0 6px 16px -6px rgb(0 0 0 / 0.55);
-    --shadow-lg: 0 2px 4px -2px rgb(0 0 0 / 0.6), 0 18px 40px -12px rgb(0 0 0 / 0.7);
+    --depth-pop: 0 4px 14px -4px rgb(0 0 0 / 0.6), 0 1px 3px rgb(0 0 0 / 0.4);
+    --depth-modal: 0 24px 56px -16px rgb(0 0 0 / 0.75), 0 2px 8px -4px rgb(0 0 0 / 0.5);
 
-    --highlight: rgb(255 255 255 / 0.06);
     --shimmer: rgb(255 255 255 / 0.06);
   }
 }
@@ -93,19 +136,28 @@
   color-scheme: dark;
 
   --canvas: #09090b;
-  --surface: #0e0e11;
-  --elevated: #141418;
-  --overlay: rgb(0 0 0 / 0.7);
+  --surface: #101014;
+  --elevated: #161619;
+  --overlay: rgb(0 0 0 / 0.72);
 
-  --line: #1f1f25;
-  --line-strong: #2e2e37;
+  --line: #26262c;
+  --line-strong: #3a3a44;
 
   --ink: #fafafa;
   --ink-muted: #a1a1aa;
-  --ink-subtle: #6e6e78;
+  --ink-subtle: #7c7c87;
+
+  --control: #1b1b1f;
+  --control-hover: #24242a;
+  --control-active: #2d2d35;
 
   --invert-bg: #fafafa;
+  --invert-hover: #e2e2e7;
+  --invert-active: #cbcbd2;
   --invert-fg: #09090b;
+
+  --tint: rgb(250 250 250 / 0.06);
+  --tint-strong: rgb(250 250 250 / 0.11);
 
   --positive: #34d399;
   --caution: #fbbf24;
@@ -114,11 +166,9 @@
 
   --ring: #fafafa;
 
-  --shadow-sm: 0 1px 2px -1px rgb(0 0 0 / 0.5), 0 1px 1px rgb(0 0 0 / 0.3);
-  --shadow-md: 0 1px 2px -1px rgb(0 0 0 / 0.5), 0 6px 16px -6px rgb(0 0 0 / 0.55);
-  --shadow-lg: 0 2px 4px -2px rgb(0 0 0 / 0.6), 0 18px 40px -12px rgb(0 0 0 / 0.7);
+  --depth-pop: 0 4px 14px -4px rgb(0 0 0 / 0.6), 0 1px 3px rgb(0 0 0 / 0.4);
+  --depth-modal: 0 24px 56px -16px rgb(0 0 0 / 0.75), 0 2px 8px -4px rgb(0 0 0 / 0.5);
 
-  --highlight: rgb(255 255 255 / 0.06);
   --shimmer: rgb(255 255 255 / 0.06);
 }
 
@@ -135,8 +185,17 @@
   --color-ink-muted: var(--ink-muted);
   --color-ink-subtle: var(--ink-subtle);
 
+  --color-control: var(--control);
+  --color-control-hover: var(--control-hover);
+  --color-control-active: var(--control-active);
+
   --color-invert-bg: var(--invert-bg);
+  --color-invert-hover: var(--invert-hover);
+  --color-invert-active: var(--invert-active);
   --color-invert-fg: var(--invert-fg);
+
+  --color-tint: var(--tint);
+  --color-tint-strong: var(--tint-strong);
 
   --color-positive: var(--positive);
   --color-caution: var(--caution);
@@ -148,9 +207,8 @@
 
   --radius-base: var(--radius);
 
-  --shadow-raised: var(--shadow-sm);
-  --shadow-float: var(--shadow-md);
-  --shadow-modal: var(--shadow-lg);
+  --shadow-pop: var(--depth-pop);
+  --shadow-modal: var(--depth-modal);
 }
 
 @layer base {
@@ -174,7 +232,7 @@
 
   ::selection {
     background-color: var(--ink);
-    color: var(--canvas);
+    color: var(--elevated);
   }
 
   /*
@@ -281,23 +339,6 @@
     line-height: 1.4;
     color: var(--ink-subtle);
     font-variant-numeric: tabular-nums;
-  }
-
-  /*
-   * A surface that sits above the page. The inset line is drawn first so it
-   * lands just inside the border rather than replacing it, which is what
-   * makes the edge read as a lit bevel instead of a doubled stroke.
-   */
-  .raised {
-    box-shadow: inset 0 1px 0 0 var(--highlight), var(--shadow-sm);
-  }
-
-  .raised-float {
-    box-shadow: inset 0 1px 0 0 var(--highlight), var(--shadow-md);
-  }
-
-  .raised-modal {
-    box-shadow: inset 0 1px 0 0 var(--highlight), var(--shadow-lg);
   }
 
   /* Faint grid, used behind the hero only. Static — no animation, no glow. */

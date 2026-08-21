@@ -124,7 +124,7 @@ export function VaultView() {
           <Overview items={items} revealed={revealAll} />
 
           {filtered.length === 0 ? (
-            <div className="animate-fade rounded-[var(--radius-lg)] border border-line bg-elevated raised py-12 text-center sm:py-16">
+            <div className="animate-fade rounded-[var(--radius-lg)] border border-line bg-elevated py-12 text-center sm:py-16">
               <p className="text-[0.9375rem] font-medium">No matches</p>
               <p className="mt-1 text-[0.8125rem] text-ink-muted">
                 Nothing in your vault matches &ldquo;{query}&rdquo;.
@@ -214,7 +214,7 @@ function Overview({ items, revealed }: { items: VaultItem[]; revealed: boolean }
         tone={reused > 0 ? "caution" : "positive"}
         note={reused > 0 ? "Share a password" : "All unique"}
       />
-      <div className="rounded-[var(--radius)] border border-line bg-elevated raised px-3.5 py-3">
+      <div className="rounded-[var(--radius)] border border-line bg-elevated px-3.5 py-3">
         <p className="text-label">Passwords</p>
         <div className="mt-2">
           {revealed ? (
@@ -253,7 +253,7 @@ function Stat({
   } as const;
 
   return (
-    <div className="rounded-[var(--radius)] border border-line bg-elevated raised px-3.5 py-3">
+    <div className="rounded-[var(--radius)] border border-line bg-elevated px-3.5 py-3">
       <p className="text-label">{label}</p>
       <p className={cn("mt-1 text-2xl font-semibold tracking-tight tabular-nums", tones[tone])}>
         {value}
@@ -464,7 +464,7 @@ function SearchField({
         autoComplete="off"
         spellCheck={false}
         className={cn(
-          "w-full rounded-[var(--radius)] border border-line bg-elevated raised",
+          "w-full rounded-[var(--radius)] border border-line bg-elevated",
           "py-2.5 pl-9 pr-16 text-sm placeholder:text-ink-subtle transition-colors",
           "hover:border-line-strong focus:border-ink focus:outline-none",
         )}
@@ -495,8 +495,8 @@ function SearchField({
 
 function EmptyState({ onAdd }: { onAdd: () => void }) {
   return (
-    <div className="animate-in-up rounded-[var(--radius-lg)] border border-line bg-elevated raised px-5 py-14 text-center sm:px-6 sm:py-20">
-      <div className="mx-auto grid size-11 place-items-center rounded-[var(--radius)] border border-line bg-surface raised">
+    <div className="animate-in-up rounded-[var(--radius-lg)] border border-line bg-elevated px-5 py-14 text-center sm:px-6 sm:py-20">
+      <div className="mx-auto grid size-11 place-items-center rounded-[var(--radius)] border border-line bg-surface">
         <KeyRound className="size-5 text-ink-muted" aria-hidden />
       </div>
       <h2 className="mt-5 text-[1.0625rem] font-semibold tracking-tight">Your vault is empty</h2>

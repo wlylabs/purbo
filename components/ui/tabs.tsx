@@ -61,6 +61,13 @@ export function Tabs<T extends string>({
     items.findIndex((item) => item.id === value),
   );
 
+  /*
+   * Keyed on which tabs are in the strip rather than on the array carrying
+   * them, so a caller writing its items inline still gets a measured marker
+   * instead of a render loop that ends with no marker at all.
+   */
+  const itemKey = items.map((item) => `${item.id}:${item.badge ?? ""}`).join("\u0000");
+
   useIsomorphicLayoutEffect(() => {
     const list = listRef.current;
     if (!list) return;
@@ -68,7 +75,12 @@ export function Tabs<T extends string>({
     const measure = () => {
       const active = list.querySelector<HTMLButtonElement>('[data-active="true"]');
       if (!active) return;
-      setMarker({ left: active.offsetLeft, width: active.offsetWidth });
+      const next = { left: active.offsetLeft, width: active.offsetWidth };
+      // Most observer callbacks change nothing; re-rendering on those would
+      // restart the marker's travel mid-slide.
+      setMarker((current) =>
+        current && current.left === next.left && current.width === next.width ? current : next,
+      );
     };
 
     measure();
@@ -78,7 +90,7 @@ export function Tabs<T extends string>({
     observer.observe(list);
     for (const child of list.children) observer.observe(child);
     return () => observer.disconnect();
-  }, [value, items]);
+  }, [value, itemKey]);
 
   const move = (delta: number) => {
     const next = items[(activeIndex + delta + items.length) % items.length];

@@ -142,11 +142,11 @@ export function Security() {
           a 1px gap, which means an unfilled cell is not empty space — it paints
           as a slab of divider colour. Keep this list a multiple of two.
         */}
-        <div className="mt-8 grid gap-px overflow-hidden rounded-[var(--radius-lg)] border border-line bg-line raised sm:mt-12 sm:grid-cols-2">
+        <div className="mt-8 grid gap-px overflow-hidden rounded-[var(--radius-lg)] border border-line bg-line sm:mt-12 sm:grid-cols-2">
           {guarantees.map((item) => (
             <div
               key={item.title}
-              className="group bg-canvas p-5 transition-colors hover:bg-elevated sm:p-8"
+              className="group bg-elevated p-5 transition-colors hover:bg-surface sm:p-8"
             >
               <span className="grid size-9 place-items-center rounded-[var(--radius-sm)] border border-line bg-surface transition-colors group-hover:border-line-strong">
                 <item.icon className="size-4 text-ink" aria-hidden />
@@ -157,7 +157,7 @@ export function Security() {
           ))}
         </div>
 
-        <div className="mt-6 rounded-[var(--radius-lg)] border border-line bg-canvas raised p-5 sm:mt-8 sm:p-8">
+        <div className="mt-6 rounded-[var(--radius-lg)] border border-line bg-elevated p-5 sm:mt-8 sm:p-8">
           <h3 className="text-[0.9375rem] font-semibold tracking-tight">
             The trade-off, stated plainly
           </h3>
@@ -213,11 +213,11 @@ export function Features() {
       <div className="mx-auto max-w-6xl px-5 py-12 sm:px-6 sm:py-20 lg:py-28">
         <SectionHeader label="Features" title="Everything the daily loop needs." />
 
-        <div className="mt-8 grid gap-px overflow-hidden rounded-[var(--radius-lg)] border border-line bg-line raised sm:mt-12 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-8 grid gap-px overflow-hidden rounded-[var(--radius-lg)] border border-line bg-line sm:mt-12 sm:grid-cols-2 lg:grid-cols-3">
           {features.map((feature) => (
             <div
               key={feature.title}
-              className="group bg-canvas p-5 transition-colors hover:bg-elevated sm:p-7"
+              className="group bg-elevated p-5 transition-colors hover:bg-surface sm:p-7"
             >
               <span className="grid size-9 place-items-center rounded-[var(--radius-sm)] border border-line bg-surface transition-colors group-hover:border-line-strong">
                 <feature.icon className="size-4 text-ink" aria-hidden />
@@ -273,10 +273,10 @@ export function Faq() {
       <div className="mx-auto max-w-6xl px-5 py-12 sm:px-6 sm:py-20 lg:py-28">
         <SectionHeader label="FAQ" title="Questions worth asking." />
 
-        <div className="mt-8 divide-line overflow-hidden rounded-[var(--radius-lg)] border border-line bg-elevated raised sm:mt-12">
+        <div className="mt-8 divide-line overflow-hidden rounded-[var(--radius-lg)] border border-line bg-elevated sm:mt-12">
           {items.map((item) => (
             <details key={item.q} className="group">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 text-[0.9375rem] font-medium transition-colors hover:bg-surface sm:px-6 sm:py-5 [&::-webkit-details-marker]:hidden">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 text-[0.9375rem] font-medium transition-colors hover:bg-tint sm:px-6 sm:py-5 [&::-webkit-details-marker]:hidden">
                 {item.q}
                 {/* A plus that loses its vertical stroke on open, so the
                     control animates into a minus instead of swapping glyphs. */}
@@ -300,7 +300,7 @@ export function CallToAction() {
   return (
     <section className="border-b border-line">
       <div className="mx-auto max-w-6xl px-5 py-12 sm:px-6 sm:py-20 lg:py-28">
-        <div className="relative overflow-hidden rounded-[var(--radius-lg)] border border-line bg-surface raised-float px-5 py-10 text-center sm:px-12 sm:py-14">
+        <div className="relative overflow-hidden rounded-[var(--radius-lg)] border border-line bg-elevated px-5 py-10 text-center sm:px-12 sm:py-14">
           <div aria-hidden className="pointer-events-none absolute inset-0 bg-grid opacity-40" />
           {/* Positioned so the decorative grid stays behind the copy — an
               absolute sibling would otherwise paint over in-flow content. */}

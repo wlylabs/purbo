@@ -4,7 +4,13 @@ import { useEffect, useState } from "react";
 
 import { cn } from "@/lib/utils";
 
-/** A keycap. Purely presentational — the shortcut itself lives with the handler. */
+/**
+ * A keycap.
+ *
+ * Flat, despite being the one element in the app that names a physical
+ * object: a shaded, bevelled key next to flat buttons would read as the only
+ * pressable thing on screen, which is the opposite of true.
+ */
 export function Kbd({
   children,
   className,
@@ -16,7 +22,7 @@ export function Kbd({
     <kbd
       className={cn(
         "inline-flex h-5 min-w-5 items-center justify-center rounded-[0.3125rem] border border-line",
-        "bg-elevated px-1.5 font-mono text-[0.625rem] font-medium text-ink-subtle raised",
+        "bg-surface px-1.5 font-mono text-[0.625rem] font-medium text-ink-subtle",
         className,
       )}
     >

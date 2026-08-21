@@ -116,7 +116,7 @@ export const PasswordInput = forwardRef<HTMLInputElement, PasswordInputProps>(
             className={cn(
               "absolute right-1 top-1/2 -translate-y-1/2 grid place-items-center",
               "size-8 rounded-[var(--radius-sm)] text-ink-subtle",
-              "hover:text-ink hover:bg-surface transition-colors",
+              "transition-colors hover:bg-tint hover:text-ink active:bg-tint-strong",
             )}
           >
             {revealed ? (

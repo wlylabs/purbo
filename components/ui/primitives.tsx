@@ -6,19 +6,47 @@ import { useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "./button";
 
-export function Card({
-  flat = false,
-  className,
-  ...props
-}: React.HTMLAttributes<HTMLDivElement> & {
-  /** Drops the lift, for cards nested inside another raised surface. */
-  flat?: boolean;
-}) {
+/**
+ * A panel on the page.
+ *
+ * It reads as a card because its fill is a step off the canvas and a hairline
+ * closes the shape — not because it is floating. Nesting one inside another
+ * therefore needs no special case: the fills stop being different, and a
+ * hairline is all that is left, which is exactly right for a group inside a
+ * group.
+ */
+export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
+      className={cn("bg-elevated border border-line rounded-[var(--radius-lg)]", className)}
+      {...props}
+    />
+  );
+}
+
+/**
+ * A pill-shaped toggle: one option out of a row of them.
+ *
+ * The selected state is the inverted fill and nothing else — no bevel to say
+ * "pushed in", which never survived being looked at next to an unselected
+ * neighbour anyway. Role and state stay at the call site, because the same
+ * shape is a `radio` in one place (auto-lock delay: exactly one) and a
+ * `pressed` button in another (generator charsets: any number).
+ */
+export function Chip({
+  selected = false,
+  className,
+  ...props
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & { selected?: boolean }) {
+  return (
+    <button
+      type="button"
       className={cn(
-        "bg-elevated border border-line rounded-[var(--radius-lg)]",
-        !flat && "raised",
+        "rounded-full border px-3.5 py-1.5 text-[0.8125rem] font-medium",
+        "transition-colors duration-150",
+        selected
+          ? "border-transparent bg-invert-bg text-invert-fg hover:bg-invert-hover"
+          : "border-line bg-control text-ink-muted hover:border-line-strong hover:bg-control-hover hover:text-ink",
         className,
       )}
       {...props}
@@ -126,7 +154,7 @@ export function Modal({
     >
       <div
         className={cn(
-          "bg-elevated border border-line rounded-[var(--radius-lg)] overflow-hidden raised-modal",
+          "bg-elevated border border-line rounded-[var(--radius-lg)] overflow-hidden shadow-modal",
           "max-h-[85vh] flex flex-col",
           className,
         )}
