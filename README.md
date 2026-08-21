@@ -168,6 +168,13 @@ end. Its rules:
 - **Updates are never applied silently.** A new worker waits until the user
   accepts the prompt, because activating it reloads the page and a reload
   discards the in-memory key — the vault would lock mid-use.
+- **Every cache is namespaced by the build it belongs to**, and the previous
+  build's caches are deleted when the new worker activates. The worker takes
+  that name from the `?v=` the page registers it with rather than from a
+  version literal, which is also what lets a deploy be noticed at all: a
+  browser looks for a new worker by comparing the script's bytes, and a static
+  `sw.js` never changes on its own. The id is the commit, so an installed app
+  left open for weeks still finds out that a new version shipped.
 
 Icons are generated from the same keyhole mark the app draws, rasterised from
 signed distance fields by `scripts/generate-icons.mjs` — `npm run icons` — so
@@ -203,6 +210,11 @@ git checkout <commit>
 npm ci && npm run build
 npm run verify-build -- https://your-deployment.example.com
 ```
+
+The build carries its commit — `next.config.ts` reads it from the CI
+environment, or from `git rev-parse HEAD`, and inlines it — so this stays a
+byte-for-byte comparison: a rebuild of the same commit produces the same id
+and therefore the same chunks. That is the reason the id is not a timestamp.
 
 A mismatch means the live site is not running the code you just built from
 that commit — reason enough to stop trusting it before typing a passphrase

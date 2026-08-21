@@ -17,9 +17,30 @@
  *   navigations        network first, falling back to cache, then /offline
  *   /_next/static/*    cache first (content-hashed, immutable)
  *   same-origin assets stale-while-revalidate
+ *
+ * Every cache this worker opens is namespaced by the build it belongs to, and
+ * anything from an older build is deleted on activate. See VERSION below for
+ * where that name comes from and why it is not written down here.
  */
 
-const VERSION = "v1";
+/**
+ * This build's identity, handed over by the page as `?v=` on the script URL.
+ *
+ * It is not written here as a literal because a literal is exactly what stops
+ * working: this file is static, so a hand-maintained version only changes when
+ * somebody remembers to change it, and every deploy in between reuses the
+ * caches of the one before it and never announces itself as an update. Taking
+ * it from `self.location` instead means the file stays reproducible — the same
+ * bytes on every deploy — while still getting a different version each time.
+ *
+ * The whole cache is therefore per-build, and `activate` drops the previous
+ * build's on the way in. That costs a re-download of assets that had not
+ * actually changed; the alternative is an asset cache that no deploy ever
+ * prunes, which is not what a password manager should be growing quietly on
+ * someone's device.
+ */
+const VERSION = new URL(self.location.href).searchParams.get("v") || "dev";
+
 const SHELL_CACHE = `purbo-shell-${VERSION}`;
 const ASSET_CACHE = `purbo-assets-${VERSION}`;
 const CURRENT_CACHES = new Set([SHELL_CACHE, ASSET_CACHE]);
