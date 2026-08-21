@@ -4,6 +4,7 @@ import { AlertTriangle, Check, Download, Fingerprint } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import { InstallSection } from "@/components/pwa/install-prompt";
+import { ThemeToggle } from "@/components/theme";
 import { ApprovalCard } from "@/components/ui/approval";
 import { Button } from "@/components/ui/button";
 import { PasswordInput } from "@/components/ui/input";
@@ -384,6 +385,23 @@ export function SettingsView() {
       </section>
 
       <PasskeySection />
+
+      {/*
+        The header carries this control too, but only from `sm` up — there is
+        no room for it beside the sync state and the lock button on a phone.
+        Installed on a phone is exactly where Purbo spends most of its life,
+        so without a home here the theme would be unreachable on the device
+        that uses it most.
+      */}
+      <Card className="flex flex-wrap items-center justify-between gap-4 p-5 sm:p-6">
+        <div className="min-w-0">
+          <h2 className="text-[0.9375rem] font-semibold tracking-tight">Appearance</h2>
+          <p className="mt-1 text-[0.8125rem] leading-relaxed text-ink-muted">
+            Stored in this browser only. &ldquo;System&rdquo; follows the device.
+          </p>
+        </div>
+        <ThemeToggle />
+      </Card>
 
       <Card className="p-5 sm:p-6">
         <InstallSection />

@@ -29,7 +29,7 @@
    * section that alternates against its neighbours.
    */
   --canvas: #f4f4f5;
-  --surface: #eeeef1;
+  --surface: #e9e9ee;
   --elevated: #ffffff;
   --overlay: rgb(9 9 11 / 0.45);
 
@@ -263,11 +263,18 @@
     touch-action: manipulation;
   }
 
-  /* One consistent focus treatment; never removed, only restyled. */
+  /*
+   * One consistent focus treatment; never removed, only restyled.
+   *
+   * It adds an outline and nothing else. Rounding the element here as well
+   * would be a focus state that changes the control's own shape — a square
+   * row visibly growing corners the moment it is tabbed to — and browsers
+   * already follow whatever radius the element itself has when drawing the
+   * outline, so there is nothing to gain from it.
+   */
   :focus-visible {
     outline: 2px solid var(--ring);
     outline-offset: 2px;
-    border-radius: var(--radius-sm);
   }
 
   input,

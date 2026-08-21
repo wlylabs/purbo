@@ -146,7 +146,7 @@ export function Security() {
           {guarantees.map((item) => (
             <div
               key={item.title}
-              className="group bg-elevated p-5 transition-colors hover:bg-surface sm:p-8"
+              className="group bg-elevated p-5 transition-colors hover:bg-control-hover sm:p-8"
             >
               <span className="grid size-9 place-items-center rounded-[var(--radius-sm)] border border-line bg-surface transition-colors group-hover:border-line-strong">
                 <item.icon className="size-4 text-ink" aria-hidden />
@@ -217,7 +217,7 @@ export function Features() {
           {features.map((feature) => (
             <div
               key={feature.title}
-              className="group bg-elevated p-5 transition-colors hover:bg-surface sm:p-7"
+              className="group bg-elevated p-5 transition-colors hover:bg-control-hover sm:p-7"
             >
               <span className="grid size-9 place-items-center rounded-[var(--radius-sm)] border border-line bg-surface transition-colors group-hover:border-line-strong">
                 <feature.icon className="size-4 text-ink" aria-hidden />

@@ -23,6 +23,22 @@ const VARIANTS: Record<ButtonVariant, string> = {
     "bg-transparent text-critical border border-critical/35 hover:bg-critical/10 hover:border-critical/60 active:bg-critical/[0.16]",
 };
 
+/*
+ * Unavailable, stated as a fill rather than as 45% opacity.
+ *
+ * A half-transparent black button is not a disabled button, it is a grey
+ * button — and on a light card it lands close enough to an ordinary
+ * secondary control to be clicked at. Recessing it instead says the same
+ * thing without inventing a colour that means something else.
+ */
+const DISABLED: Record<ButtonVariant, string> = {
+  primary: "disabled:border-line disabled:bg-surface disabled:text-ink-subtle",
+  secondary: "disabled:border-line disabled:bg-surface disabled:text-ink-subtle",
+  // Already transparent; there is no fill to recess, only text to settle back.
+  ghost: "disabled:text-ink-subtle",
+  danger: "disabled:border-line disabled:text-ink-subtle",
+};
+
 const SIZES: Record<ButtonSize, string> = {
   sm: "h-8 px-3 text-[0.8125rem] rounded-[var(--radius-sm)] gap-1.5",
   md: "h-10 px-4 text-sm rounded-[var(--radius)] gap-2",
@@ -45,10 +61,16 @@ const SIZES: Record<ButtonSize, string> = {
 export function buttonStyles({
   variant = "primary",
   size = "md",
+  loading = false,
   className,
 }: {
   variant?: ButtonVariant;
   size?: ButtonSize;
+  /**
+   * Keeps the button looking like itself while its action is in flight.
+   * Ignored on anchors, which have no in-flight state.
+   */
+  loading?: boolean;
   className?: string;
 } = {}): string {
   return cn(
@@ -57,9 +79,16 @@ export function buttonStyles({
     // is imitating a physical key, and on a touchscreen — where the press is
     // under a fingertip — the one thing it does is get hidden.
     "transition-colors duration-150",
-    "disabled:pointer-events-none disabled:opacity-45",
+    "disabled:pointer-events-none",
     VARIANTS[variant],
     SIZES[size],
+    /*
+     * A loading button is disabled too — that is what stops a second submit —
+     * but it is working, not unavailable. Greying it out at the moment the
+     * user commits reads as the action having been refused, so it keeps its
+     * own fill and lets the spinner carry the message.
+     */
+    loading ? "cursor-wait" : DISABLED[variant],
     className,
   );
 }
