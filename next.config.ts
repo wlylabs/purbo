@@ -72,8 +72,10 @@ const nextConfig: NextConfig = {
         ],
       },
       {
-        // Not content-hashed, so cached for a week rather than forever.
-        source: "/icons/:path*",
+        // Not content-hashed, so cached for a week rather than forever. The
+        // install dialog's screenshots are the same kind of asset as the
+        // icons — a fixed name, replaced only when the interface changes.
+        source: "/:asset(icons|screenshots)/:path*",
         headers: [{ key: "cache-control", value: "public, max-age=604800" }],
       },
     ];

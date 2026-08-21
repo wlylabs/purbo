@@ -180,6 +180,22 @@ Icons are generated from the same keyhole mark the app draws, rasterised from
 signed distance fields by `scripts/generate-icons.mjs` — `npm run icons` — so
 no image toolchain enters the dependency tree. The output is committed.
 
+The manifest's screenshots — what an install dialog shows before anyone
+commits to installing — cannot be drawn from shapes, because they are
+photographs of the running app. `scripts/generate-screenshots.mjs` retakes
+them against a local server or a deployment, and asks for a browser to be
+brought along rather than carrying one in the tree for three PNGs that change
+only when the interface does:
+
+```bash
+npm i --no-save playwright && npx playwright install chromium
+npm run build && npm start &
+npm run screenshots
+```
+
+The output is committed too, so a deploy never depends on either script
+having run.
+
 ### The trade-off
 
 Because no key material reaches the server, **nobody can reset a passphrase or
@@ -282,7 +298,8 @@ lib/
   server/             Auth, tokens, KV driver, rate limiting, wire validation
 components/           Landing sections, vault UI, design-system primitives
 public/sw.js          Service worker — app shell only, never vault data
-scripts/              Icon generation, build-integrity verification
+public/screenshots/   Manifest screenshots for the install dialog
+scripts/              Icon and screenshot generation, build-integrity verification
 proxy.ts              Per-request CSP nonce and security headers
 tests/                Crypto and key-hierarchy checks
 SECURITY.md           Vulnerability disclosure policy

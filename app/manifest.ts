@@ -53,6 +53,47 @@ export default function manifest(): MetadataRoute.Manifest {
       },
     ],
 
+    /*
+     * What the install dialog shows before anyone commits to installing.
+     *
+     * Without these Chrome falls back to a one-line prompt that names the
+     * origin and nothing else — for a password manager, asked for at the
+     * moment someone is deciding whether to trust it with every credential
+     * they own, that is the wrong amount of information. The narrow pair share
+     * an aspect ratio because a form factor whose screenshots disagree is
+     * dropped rather than letterboxed.
+     *
+     * They are captures of the real thing at the sizes named here, light
+     * theme, taken from a production build. `npm run screenshots` retakes
+     * them; see the note in the README about why that needs a browser you
+     * bring yourself.
+     */
+    screenshots: [
+      {
+        src: "/screenshots/home-narrow.png",
+        sizes: "412x915",
+        type: "image/png",
+        form_factor: "narrow",
+        label: "Purbo's home page on a phone: the pitch, and a vault holding four entries.",
+      },
+      {
+        src: "/screenshots/vault-narrow.png",
+        sizes: "412x915",
+        type: "image/png",
+        form_factor: "narrow",
+        // The screen `start_url` actually lands on, so the dialog is not
+        // promising a different app from the one that opens.
+        label: "Opening a vault: create a new one, restore a recovery phrase, or use a passkey.",
+      },
+      {
+        src: "/screenshots/home-wide.png",
+        sizes: "1280x800",
+        type: "image/png",
+        form_factor: "wide",
+        label: "Purbo's home page on a desktop, beside a vault holding four entries.",
+      },
+    ],
+
     shortcuts: [
       {
         name: "Open vault",
