@@ -43,10 +43,10 @@ export function Chip({
       type="button"
       className={cn(
         "rounded-full border px-3.5 py-1.5 text-[0.8125rem] font-medium",
-        "transition-colors duration-150",
+        "interactive",
         selected
-          ? "border-transparent bg-invert-bg text-invert-fg hover:bg-invert-hover"
-          : "border-line-control bg-control text-ink-muted hover:bg-control-hover hover:text-ink",
+          ? "border-transparent bg-invert-bg text-invert-fg hover:bg-invert-hover active:bg-invert-active"
+          : "border-line-control bg-control text-ink-muted hover:bg-control-hover hover:text-ink active:bg-control-active",
         className,
       )}
       {...props}

@@ -78,7 +78,12 @@ export function buttonStyles({
     // Colour only. Nothing here moves: a control that dips under the cursor
     // is imitating a physical key, and on a touchscreen — where the press is
     // under a fingertip — the one thing it does is get hidden.
-    "transition-colors duration-150",
+    //
+    // `interactive` is what makes the press land rather than flash: the
+    // pressed fill arrives instantly and only the release is animated, so a
+    // fast click shows the colour named below instead of a part-way blend of
+    // it. See the note on the class in `app/globals.css`.
+    "interactive",
     "disabled:pointer-events-none",
     VARIANTS[variant],
     SIZES[size],

@@ -61,10 +61,10 @@ export function ThemeToggle({ className }: { className?: string }) {
           aria-label={label}
           onClick={() => choose(value)}
           className={cn(
-            "grid place-items-center size-7 rounded-full transition-colors duration-150",
+            "grid place-items-center size-7 rounded-full interactive",
             mounted && theme === value
-              ? "bg-invert-bg text-invert-fg"
-              : "text-ink-subtle hover:text-ink",
+              ? "bg-invert-bg text-invert-fg active:bg-invert-active"
+              : "text-ink-subtle hover:text-ink active:bg-tint-strong",
           )}
         >
           <Icon className="size-3.5" aria-hidden />

@@ -141,8 +141,8 @@ export function TraceStep({
       <details className="group/details">
         <summary
           className={cn(
-            "flex cursor-pointer list-none gap-3 px-4 py-3.5 transition-colors sm:px-5",
-            "hover:bg-tint [&::-webkit-details-marker]:hidden",
+            "flex cursor-pointer list-none gap-3 px-4 py-3.5 interactive sm:px-5",
+            "hover:bg-tint active:bg-tint-strong [&::-webkit-details-marker]:hidden",
           )}
         >
           {marker}

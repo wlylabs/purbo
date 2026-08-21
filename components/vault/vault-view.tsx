@@ -476,7 +476,7 @@ function SearchField({
             type="button"
             onClick={() => onChange("")}
             aria-label="Clear search"
-            className="grid size-6 place-items-center rounded-[var(--radius-sm)] text-ink-subtle transition-colors hover:bg-tint hover:text-ink"
+            className="grid size-6 place-items-center rounded-[var(--radius-sm)] text-ink-subtle interactive hover:bg-tint hover:text-ink active:bg-tint-strong"
           >
             <X className="size-3.5" aria-hidden />
           </button>

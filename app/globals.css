@@ -336,6 +336,41 @@
 }
 
 @layer components {
+  /*
+   * The one press curve in the system.
+   *
+   * A symmetric transition is what makes a click flash. `mousedown` starts the
+   * fill easing toward its pressed colour; `mouseup` lands 60-90ms later, well
+   * before it arrives, and the fill turns back from wherever it had got to. The
+   * eye never sees the pressed colour — it sees a smear whose strength depends
+   * on how fast the click happened to be, which is a different smear every time.
+   *
+   * So the press is not animated and the release is. The pressed fill lands
+   * whole on `mousedown` and eases back out on release. GitHub's Primer settles
+   * its buttons exactly this way — `transition: 80ms cubic-bezier(0.33, 1, 0.68,
+   * 1)` on the button, `transition: none` on `:active` — and the release here is
+   * timed so that even a 60ms tap stays legible for roughly the 225ms that
+   * Material Web holds a ripple down for before letting it go (MINIMUM_PRESS_MS).
+   *
+   * The two halves sit in different layers on purpose, because that is what
+   * decides which of them a caller may retime. The release below is in
+   * `components`, so a `duration-*` utility overrides it — retiming how long a
+   * control takes to settle is a reasonable thing to want. The press is pinned
+   * in `utilities` further down, where layer order no longer helps and
+   * `.interactive:active` simply outweighs `.duration-200`: the press is the
+   * invariant, and animating it is the bug this class exists to remove.
+   *
+   * Reduced motion is already handled globally above, and correctly — with
+   * both halves at zero the press still lands and still lifts, it just does
+   * not travel.
+   */
+  .interactive {
+    transition-property: color, background-color, border-color, text-decoration-color,
+      fill, stroke;
+    transition-duration: 180ms;
+    transition-timing-function: cubic-bezier(0.33, 1, 0.68, 1);
+  }
+
   /* Display type: tight tracking, optical sizing on. */
   .text-display {
     letter-spacing: -0.035em;
@@ -377,6 +412,15 @@
 }
 
 @layer utilities {
+  /*
+   * The press half of `.interactive`. See the note on the class itself for why
+   * it lives here rather than beside the release: this is the layer where a
+   * `duration-*` utility would otherwise win, and the press must not animate.
+   */
+  .interactive:active {
+    transition-duration: 0s;
+  }
+
   /*
    * Display-cutout insets. Zero everywhere except an installed app on a
    * device with a notch or a home indicator, so they can be applied
