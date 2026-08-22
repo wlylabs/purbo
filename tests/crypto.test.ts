@@ -27,6 +27,7 @@ import {
   unlockWithPassphrase,
   unlockWithRecoveryPhrase,
   rewrapWithNewPassphrase,
+  rewrapWithPassphrase,
   AccountMismatchError,
   IncorrectPassphraseError,
   IncorrectRecoveryPhraseError,
@@ -38,8 +39,24 @@ import {
   signChallenge,
   verifyChallenge,
 } from "@/lib/auth/identity";
+import {
+  base32Decode,
+  formatTotpCode,
+  generateTotpCode,
+  isValidTotpInput,
+  parseTotpInput,
+  secondsRemaining,
+} from "@/lib/crypto/totp";
 import { mintSessionToken, readSessionToken } from "@/lib/server/token";
 import { encryptItem, decryptItem, decryptAll, draftToItem } from "@/lib/vault/records";
+import {
+  parseCsv,
+  parseVaultImport,
+  partitionDuplicates,
+  UnrecognisedImportError,
+} from "@/lib/vault/import";
+import { addTag, collectTags, normaliseTags, parseTagList, removeTag } from "@/lib/vault/tags";
+import type { VaultItem } from "@/lib/vault/types";
 
 const results: string[] = [];
 function pass(name: string) {
@@ -801,6 +818,252 @@ await test("strength estimates rank passwords sensibly", () => {
 await test("repeated characters do not inflate the score", () => {
   const repeated = estimateStrength("aaaaaaaaaaaaaaaaaaaaaaaa");
   assert.ok(repeated.bits < 40, `24 identical chars scored ${repeated.bits} bits`);
+});
+
+// --------------------------------------------------------------------- TOTP
+
+/** RFC 6238's own key: the ASCII digits 1234567890 repeated, in base32. */
+const RFC6238_KEY = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
+
+await test("base32 decoding accepts the shapes issuers actually print", () => {
+  const canonical = base32Decode("JBSWY3DPEHPK3PXP");
+  assert.deepEqual(base32Decode("jbswy3dp ehpk3pxp"), canonical);
+  assert.deepEqual(base32Decode("JBSW-Y3DP-EHPK-3PXP"), canonical);
+  assert.deepEqual(base32Decode("JBSWY3DPEHPK3PXP===="), canonical);
+  assert.throws(() => base32Decode("JBSWY3DP!"), /recognisable/);
+  assert.throws(() => base32Decode("   "), /recognisable/);
+});
+
+await test("TOTP matches the RFC 6238 vectors", async () => {
+  const config = { ...parseTotpInput(RFC6238_KEY), digits: 8 };
+  const vectors: [number, string][] = [
+    [59, "94287082"],
+    [1111111109, "07081804"],
+    [1111111111, "14050471"],
+    [1234567890, "89005924"],
+    [2000000000, "69279037"],
+    [20000000000, "65353130"],
+  ];
+
+  for (const [seconds, expected] of vectors) {
+    assert.equal(await generateTotpCode(config, seconds * 1000), expected, `T=${seconds}`);
+  }
+});
+
+await test("otpauth URIs carry their own parameters", () => {
+  const config = parseTotpInput(
+    `otpauth://totp/Purbo:me@example.com?secret=${RFC6238_KEY}&issuer=Purbo&digits=8&period=60&algorithm=SHA256`,
+  );
+
+  assert.equal(config.digits, 8);
+  assert.equal(config.period, 60);
+  assert.equal(config.algorithm, "SHA-256");
+  assert.equal(config.issuer, "Purbo");
+  assert.deepEqual(config.secret, base32Decode(RFC6238_KEY));
+});
+
+await test("counter-based and malformed secrets are refused", () => {
+  assert.throws(
+    () => parseTotpInput(`otpauth://hotp/Example?secret=${RFC6238_KEY}&counter=1`),
+    /time-based/,
+  );
+  assert.throws(() => parseTotpInput("otpauth://totp/Example?issuer=Nobody"), /recognisable/);
+  assert.equal(isValidTotpInput("not a secret!"), false);
+  assert.equal(isValidTotpInput(RFC6238_KEY), true);
+});
+
+await test("the countdown runs the length of the period and no longer", () => {
+  const config = parseTotpInput(RFC6238_KEY);
+  assert.equal(secondsRemaining(config, 0), 30);
+  assert.equal(secondsRemaining(config, 29_000), 1);
+  assert.equal(secondsRemaining(config, 30_000), 30);
+  assert.equal(formatTotpCode("482913"), "482 913");
+});
+
+// -------------------------------------------------------------------- tags
+
+await test("tags collapse to one spelling each", () => {
+  assert.deepEqual(normaliseTags(["Work", " work ", "WORK", "banking"]), ["Work", "banking"]);
+  assert.deepEqual(normaliseTags(["  spaced   out  "]), ["spaced out"]);
+  assert.deepEqual(normaliseTags(undefined), []);
+  assert.deepEqual(normaliseTags(["", "   "]), []);
+  // The cap is a cap, not a suggestion.
+  assert.equal(normaliseTags(Array.from({ length: 40 }, (_, i) => `t${i}`)).length, 12);
+});
+
+await test("adding and removing a tag is case-insensitive", () => {
+  assert.deepEqual(addTag(["work"], "Work"), ["work"]);
+  assert.deepEqual(addTag(["work"], "banking"), ["work", "banking"]);
+  assert.deepEqual(removeTag(["work", "banking"], "WORK"), ["banking"]);
+  assert.deepEqual(parseTagList("work, banking; shared"), ["work", "banking", "shared"]);
+});
+
+await test("the tag list is ordered by use", () => {
+  const item = (tags: string[]): VaultItem => ({
+    id: Math.random().toString(36).slice(2),
+    name: "x",
+    username: "",
+    password: "x",
+    tags,
+    createdAt: 0,
+    updatedAt: 0,
+  });
+
+  assert.deepEqual(
+    collectTags([item(["work"]), item(["work", "banking"]), item(["archive"])]),
+    [
+      { tag: "work", count: 2 },
+      { tag: "archive", count: 1 },
+      { tag: "banking", count: 1 },
+    ],
+  );
+});
+
+// ------------------------------------------------------------------ import
+
+await test("CSV parsing survives quotes, commas and newlines", () => {
+  const rows = parseCsv('a,b\n"x,1","line\nbreak"\n"say ""hi""",z\n');
+  assert.deepEqual(rows, [
+    ["a", "b"],
+    ["x,1", "line\nbreak"],
+    ['say "hi"', "z"],
+  ]);
+});
+
+await test("a Bitwarden CSV maps onto entries", () => {
+  const csv = [
+    "folder,favorite,type,name,notes,fields,reprompt,login_uri,login_username,login_password,login_totp",
+    `work,1,login,GitHub,"a note",,0,https://github.com,me@example.com,hunter2,${RFC6238_KEY}`,
+    ",0,login,,,,0,,,,",
+    ",0,login,No Password,,,0,,someone,,",
+  ].join("\n");
+
+  const result = parseVaultImport(csv);
+  assert.equal(result.format, "csv");
+  assert.equal(result.entries.length, 1);
+  assert.equal(result.skipped, 2);
+
+  const [entry] = result.entries;
+  assert.equal(entry!.name, "GitHub");
+  assert.equal(entry!.username, "me@example.com");
+  assert.equal(entry!.password, "hunter2");
+  assert.equal(entry!.url, "https://github.com");
+  assert.equal(entry!.notes, "a note");
+  assert.equal(entry!.totp, RFC6238_KEY);
+  assert.deepEqual(entry!.tags, ["work"]);
+  assert.equal(entry!.favourite, true);
+});
+
+await test("a semicolon-separated export is still a CSV", () => {
+  const result = parseVaultImport("name;username;password\nBank;me;s3cret");
+  assert.equal(result.entries.length, 1);
+  assert.equal(result.entries[0]!.password, "s3cret");
+});
+
+await test("a TOTP column that will not produce codes is dropped, not stored", () => {
+  const result = parseVaultImport("name,password,totp\nSite,pw,not-base32!");
+  assert.equal(result.entries[0]!.totp, undefined);
+});
+
+await test("Purbo and Bitwarden JSON exports both come back", () => {
+  const purbo = parseVaultImport(
+    JSON.stringify({
+      items: [
+        { name: "Mail", username: "me", password: "pw", tags: ["work", "WORK"], favourite: true },
+      ],
+    }),
+  );
+  assert.equal(purbo.format, "purbo-json");
+  assert.deepEqual(purbo.entries[0]!.tags, ["work"]);
+  assert.equal(purbo.entries[0]!.favourite, true);
+
+  const bitwarden = parseVaultImport(
+    JSON.stringify({
+      items: [
+        {
+          name: "Mail",
+          notes: "n",
+          favorite: false,
+          login: {
+            username: "me",
+            password: "pw",
+            uris: [{ uri: "https://mail.example.com" }],
+          },
+        },
+      ],
+    }),
+  );
+  assert.equal(bitwarden.format, "bitwarden-json");
+  assert.equal(bitwarden.entries[0]!.url, "https://mail.example.com");
+  assert.equal(bitwarden.entries[0]!.favourite, undefined);
+});
+
+await test("files that are not exports are refused rather than half-read", () => {
+  assert.throws(() => parseVaultImport(""), UnrecognisedImportError);
+  assert.throws(() => parseVaultImport("{ not json"), UnrecognisedImportError);
+  assert.throws(() => parseVaultImport("just,some,columns\n1,2,3"), UnrecognisedImportError);
+});
+
+await test("duplicates are found across the vault and within the file", () => {
+  const existing: VaultItem[] = [
+    {
+      id: "1",
+      name: "GitHub",
+      username: "me@example.com",
+      password: "old",
+      createdAt: 0,
+      updatedAt: 0,
+    },
+  ];
+
+  const { fresh, duplicates } = partitionDuplicates(existing, [
+    { name: "github", username: "ME@example.com", password: "new" },
+    { name: "Bank", username: "me", password: "x" },
+    { name: "Bank", username: "me", password: "x" },
+  ]);
+
+  assert.equal(fresh.length, 1);
+  assert.equal(fresh[0]!.name, "Bank");
+  assert.equal(duplicates.length, 2);
+});
+
+// ------------------------------------------------------- passphrase rotation
+
+await test("rotating the passphrase keeps the vault readable", async () => {
+  const phrase = createRecoveryPhrase();
+  const { envelope, keyring } = await createKeyring(phrase, "old-passphrase-11");
+  const sealed = await encryptItem(keyring, draftToItem({ name: "Mail", username: "me", password: "pw" }));
+
+  const rotated = await rewrapWithPassphrase(
+    keyring.accountId,
+    envelope,
+    "old-passphrase-11",
+    "new-passphrase-22",
+  );
+
+  const reopened = await unlockWithPassphrase(keyring.accountId, rotated, "new-passphrase-22");
+  assert.equal(reopened.accountId, keyring.accountId);
+  assert.equal((await decryptItem(reopened, sealed)).password, "pw");
+
+  // The old passphrase stops working, and the recovery phrase does not.
+  await assert.rejects(
+    () => unlockWithPassphrase(keyring.accountId, rotated, "old-passphrase-11"),
+    IncorrectPassphraseError,
+  );
+  const byPhrase = await unlockWithRecoveryPhrase(rotated, phrase);
+  assert.equal(byPhrase.accountId, keyring.accountId);
+
+  // The salt has to be fresh, or the new wrap is derived under the old one's.
+  assert.notEqual(rotated.salt, envelope.salt);
+  assert.equal(rotated.rootSalt, envelope.rootSalt);
+});
+
+await test("rotating refuses a wrong current passphrase", async () => {
+  const { envelope, keyring } = await createKeyring(createRecoveryPhrase(), "old-passphrase-11");
+  await assert.rejects(
+    () => rewrapWithPassphrase(keyring.accountId, envelope, "not-the-passphrase", "new-one-2233"),
+    IncorrectPassphraseError,
+  );
 });
 
 console.log(results.join("\n"));

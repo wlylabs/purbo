@@ -52,6 +52,7 @@ import {
   keyringFromRootMaterial,
   keyringFromSessionKeys,
   rewrapWithNewPassphrase,
+  rewrapWithPassphrase,
   unlockWithPassphrase,
   unlockWithRecoveryPhrase,
   type Keyring,
@@ -123,8 +124,21 @@ interface VaultContextValue {
   /** Re-proves ownership with a registered passkey. */
   verifyPasskey(): Promise<void>;
 
+  /**
+   * Rotates the passphrase without touching the root key.
+   *
+   * Distinct from `recoverWithPhrase`, which is for a passphrase that is
+   * gone. This one proves the current passphrase instead, so rotating does
+   * not mean fetching the 24 words out of wherever they are kept.
+   */
+  changePassphrase(currentPassphrase: string, newPassphrase: string): Promise<void>;
+
   saveItem(draft: VaultItemDraft, id?: string): Promise<void>;
   removeItem(id: string): Promise<void>;
+  /** Pins an entry to the top of the list, without counting as an edit. */
+  toggleFavourite(id: string): Promise<void>;
+  /** Adds a batch of entries in one encrypt-and-push. Returns how many. */
+  importItems(drafts: VaultItemDraft[]): Promise<number>;
   destroyVault(): Promise<void>;
 
   autoLockMinutes: number;
@@ -793,6 +807,90 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
     [persist],
   );
 
+  /**
+   * Favouriting is not editing.
+   *
+   * `updatedAt` is deliberately left alone: it answers "when did this
+   * credential last change", and a star that reset it would make every
+   * ageing check and every "updated just now" line a lie about the password.
+   */
+  const toggleFavourite = useCallback(
+    async (id: string) => {
+      const keyring = keyringRef.current;
+      if (!keyring) throw new Error("Vault is locked.");
+
+      const existing = items.find((item) => item.id === id);
+      if (!existing) return;
+
+      const next: VaultItem = { ...existing, favourite: !existing.favourite };
+      const encrypted = await encryptItem(keyring, next);
+
+      setItems(items.map((item) => (item.id === id ? next : item)));
+      await persist(
+        encryptedRef.current.map((record) => (record.id === id ? encrypted : record)),
+      );
+    },
+    [items, persist],
+  );
+
+  /**
+   * A whole import as one write.
+   *
+   * Saving entries one at a time would mean one Argon2id-free but still
+   * round-tripping push per row — a thousand-row export would spend minutes
+   * of network on a vault that is one blob. Everything is encrypted first,
+   * then persisted once.
+   */
+  const importItems = useCallback(
+    async (drafts: VaultItemDraft[]) => {
+      const keyring = keyringRef.current;
+      if (!keyring) throw new Error("Vault is locked.");
+      if (drafts.length === 0) return 0;
+
+      const created = drafts.map(draftToItem);
+      const encrypted = await Promise.all(
+        created.map((item) => encryptItem(keyring, item)),
+      );
+
+      const nextItems = [...created, ...items];
+      nextItems.sort((a, b) => b.updatedAt - a.updatedAt);
+      setItems(nextItems);
+
+      await persist([...encrypted, ...encryptedRef.current]);
+      return created.length;
+    },
+    [items, persist],
+  );
+
+  /**
+   * Rotating the passphrase, with the old one as the proof.
+   *
+   * Only the envelope changes, so this costs one write rather than a
+   * re-encryption of the vault — and every passkey keeps working, because
+   * what they seal is the root key, which is untouched.
+   */
+  const changePassphrase = useCallback(
+    async (currentPassphrase: string, newPassphrase: string) => {
+      const envelope = envelopeRef.current;
+      const keyring = keyringRef.current;
+      if (!envelope || !keyring) throw new Error("The vault is locked.");
+
+      const next = await rewrapWithPassphrase(
+        keyring.accountId,
+        envelope,
+        currentPassphrase,
+        newPassphrase,
+      );
+
+      envelopeRef.current = next;
+      // The entries are unchanged, but the envelope only reaches storage
+      // through a write, and until it does the old passphrase is still the
+      // one this device would unlock with after a reload.
+      await persist(encryptedRef.current);
+    },
+    [persist],
+  );
+
   const destroyVault = useCallback(async () => {
     const current = keyringRef.current?.accountId ?? accountId;
     if (!current) return;
@@ -901,8 +999,11 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
       stepUpVerified: verifiedAt !== null,
       verifyPassphrase,
       verifyPasskey,
+      changePassphrase,
       saveItem,
       removeItem,
+      toggleFavourite,
+      importItems,
       destroyVault,
       autoLockMinutes,
       setAutoLockMinutes,
@@ -934,8 +1035,11 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
       verifiedAt,
       verifyPassphrase,
       verifyPasskey,
+      changePassphrase,
       saveItem,
       removeItem,
+      toggleFavourite,
+      importItems,
       destroyVault,
       autoLockMinutes,
       setAutoLockMinutes,

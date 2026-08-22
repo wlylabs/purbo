@@ -10,6 +10,14 @@ export interface VaultItem {
   password: string;
   url?: string;
   notes?: string;
+  /**
+   * An authenticator secret — a bare base32 string or a whole `otpauth://`
+   * URI. Stored as the user supplied it and parsed on every read, so a format
+   * this version does not understand is never rewritten into one it does.
+   */
+  totp?: string;
+  /** Free-text labels, normalised by `lib/vault/tags`. */
+  tags?: string[];
   favourite?: boolean;
   createdAt: number;
   updatedAt: number;
