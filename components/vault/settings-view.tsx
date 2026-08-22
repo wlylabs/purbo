@@ -1,7 +1,14 @@
 "use client";
 
-import { AlertTriangle, Check, Download, Fingerprint } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import {
+  AlertTriangle,
+  Check,
+  Download,
+  Fingerprint,
+  KeyRound,
+  Upload,
+} from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { InstallSection } from "@/components/pwa/install-prompt";
 import { ThemeToggle } from "@/components/theme";
@@ -16,8 +23,16 @@ import {
   listPasskeys,
 } from "@/lib/auth/passkey";
 import { DEFAULT_KDF_PARAMS } from "@/lib/crypto/kdf";
+import { estimateStrength } from "@/lib/crypto/password";
+import {
+  UnrecognisedImportError,
+  parseVaultImport,
+  partitionDuplicates,
+} from "@/lib/vault/import";
+import { IncorrectPassphraseError } from "@/lib/vault/keyring";
 import { useVault } from "@/lib/vault/provider";
-import type { PasskeySummary } from "@/lib/vault/types";
+import type { PasskeySummary, VaultItemDraft } from "@/lib/vault/types";
+import { PassphraseFields, passphraseIsUsable } from "./passphrase-fields";
 import { StepUp } from "./step-up";
 
 /**
@@ -191,6 +206,346 @@ function PasskeySection() {
   );
 }
 
+/**
+ * Rotating a passphrase that is not forgotten.
+ *
+ * The lock screen already has a "forgot it" path, and that one costs 24
+ * words. This is the everyday case it does not cover: a passphrase that was
+ * shoulder-surfed, shared once to get someone into an account, or simply
+ * older than the user is comfortable with. Making that require the recovery
+ * phrase would mean fetching the phrase out of the safe it belongs in — and
+ * the phrase leaving its hiding place is a bigger risk than the passphrase
+ * being a year old.
+ */
+function ChangePassphraseSection() {
+  const { changePassphrase } = useVault();
+
+  const [open, setOpen] = useState(false);
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+
+  const reset = () => {
+    setOpen(false);
+    setCurrent("");
+    setNext("");
+    setConfirmation("");
+    setError(null);
+  };
+
+  const strongEnough = passphraseIsUsable(next, estimateStrength(next).bits);
+  const valid =
+    current.length > 0 && strongEnough && next === confirmation && next !== current;
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!valid) return;
+
+    setBusy(true);
+    setError(null);
+    try {
+      await changePassphrase(current, next);
+      reset();
+      setDone(true);
+      window.setTimeout(() => setDone(false), 6000);
+    } catch (err) {
+      setError(
+        err instanceof IncorrectPassphraseError
+          ? "That is not the passphrase this vault is currently wrapped with."
+          : err instanceof Error
+            ? err.message
+            : "Could not change the passphrase.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card className="p-5 sm:p-6">
+      <h2 className="text-[0.9375rem] font-semibold tracking-tight">Passphrase</h2>
+      <p className="mt-1 text-[0.8125rem] leading-relaxed text-ink-muted">
+        Changing it re-wraps the same root key under a new one. Nothing is re-encrypted, so
+        your entries and every registered passkey keep working — only the thing that opens
+        the wrap changes.
+      </p>
+
+      {open ? (
+        <form onSubmit={submit} className="mt-5 space-y-5 border-t border-line pt-5">
+          <PasswordInput
+            label="Current passphrase"
+            value={current}
+            onChange={(event) => {
+              setCurrent(event.target.value);
+              if (error) setError(null);
+            }}
+            mono={false}
+            autoFocus
+            required
+            hint="Proved by unwrapping for real, the same work an unlock does."
+          />
+
+          <PassphraseFields
+            passphrase={next}
+            confirmation={confirmation}
+            onPassphrase={setNext}
+            onConfirmation={setConfirmation}
+            disabled={busy}
+          />
+
+          {next && next === current ? (
+            <Notice tone="caution">That is the passphrase you already have.</Notice>
+          ) : null}
+
+          {error ? (
+            <Notice tone="critical" icon={<AlertTriangle className="size-4" />}>
+              {error}
+            </Notice>
+          ) : null}
+
+          <Notice tone="neutral">
+            Your other devices keep unlocking with the old passphrase until they next reach
+            the server — they hold their own copy of the wrap, and it is the sync that
+            replaces it.
+          </Notice>
+
+          <div className="flex gap-2">
+            <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={reset}>
+              Cancel
+            </Button>
+            <Button type="submit" size="sm" className="flex-1" loading={busy} disabled={!valid}>
+              Change passphrase
+            </Button>
+          </div>
+        </form>
+      ) : (
+        <Button variant="secondary" size="sm" className="mt-4" onClick={() => setOpen(true)}>
+          {done ? (
+            <Check className="size-3.5 text-positive" aria-hidden />
+          ) : (
+            <KeyRound className="size-3.5" aria-hidden />
+          )}
+          {done ? "Passphrase changed" : "Change passphrase"}
+        </Button>
+      )}
+    </Card>
+  );
+}
+
+interface Staged {
+  fresh: VaultItemDraft[];
+  duplicates: VaultItemDraft[];
+  skipped: number;
+  format: string;
+  filename: string;
+}
+
+const FORMAT_LABELS: Record<string, string> = {
+  "purbo-json": "a Purbo export",
+  "bitwarden-json": "a Bitwarden JSON export",
+  csv: "a CSV export",
+};
+
+/**
+ * Bringing a vault in from somewhere else.
+ *
+ * The file is read with `File.text()` and parsed in this tab. It is never
+ * uploaded — an import that posted the CSV somewhere "to parse it properly"
+ * would hand over, in one request, everything the rest of this app exists to
+ * keep. What lands in the vault is encrypted before it is stored, like
+ * anything typed in by hand.
+ *
+ * Nothing is written until the counts have been shown. An import that silently
+ * doubled a vault because the file had been imported once already is the
+ * failure everyone has had, and it is not undoable one entry at a time.
+ */
+function ImportSection() {
+  const { importItems, items } = useVault();
+
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [staged, setStaged] = useState<Staged | null>(null);
+  const [includeDuplicates, setIncludeDuplicates] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [imported, setImported] = useState<number | null>(null);
+
+  const choose = async (file: File | undefined) => {
+    if (!file) return;
+    setError(null);
+    setImported(null);
+    setIncludeDuplicates(false);
+
+    try {
+      const result = parseVaultImport(await file.text());
+      const { fresh, duplicates } = partitionDuplicates(items, result.entries);
+      setStaged({
+        fresh,
+        duplicates,
+        skipped: result.skipped,
+        format: result.format,
+        filename: file.name,
+      });
+    } catch (err) {
+      setStaged(null);
+      setError(
+        err instanceof UnrecognisedImportError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : "That file could not be read.",
+      );
+    }
+  };
+
+  const confirm = async () => {
+    if (!staged) return;
+    const drafts = includeDuplicates
+      ? [...staged.fresh, ...staged.duplicates]
+      : staged.fresh;
+
+    setBusy(true);
+    setError(null);
+    try {
+      setImported(await importItems(drafts));
+      setStaged(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save the imported entries.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const total = staged ? staged.fresh.length + (includeDuplicates ? staged.duplicates.length : 0) : 0;
+
+  return (
+    <Card className="p-5 sm:p-6">
+      <h2 className="text-[0.9375rem] font-semibold tracking-tight">Import</h2>
+      <p className="mt-1 text-[0.8125rem] leading-relaxed text-ink-muted">
+        Bring entries in from Bitwarden, 1Password, LastPass, Chrome, or any CSV with a
+        header row. The file is read and encrypted in this browser — it is never uploaded.
+        Delete it afterwards: until you do, it is a plaintext copy of your passwords sitting
+        in your downloads folder.
+      </p>
+
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".csv,.json,.txt,text/csv,application/json,text/plain"
+        className="hidden"
+        onChange={(event) => {
+          void choose(event.target.files?.[0]);
+          // Cleared so choosing the same file twice still fires a change.
+          event.target.value = "";
+        }}
+      />
+
+      {staged ? (
+        <div className="mt-4 space-y-4 border-t border-line pt-5">
+          <div className="space-y-1">
+            <p className="text-[0.875rem] font-medium">
+              {staged.filename} — read as {FORMAT_LABELS[staged.format] ?? "a CSV export"}
+            </p>
+            <ul className="space-y-0.5 text-[0.8125rem] leading-relaxed text-ink-muted">
+              <li>
+                <strong className="text-ink tabular-nums">{staged.fresh.length}</strong>{" "}
+                {staged.fresh.length === 1 ? "entry is" : "entries are"} new to this vault.
+              </li>
+              {staged.duplicates.length > 0 ? (
+                <li>
+                  <strong className="text-ink tabular-nums">{staged.duplicates.length}</strong>{" "}
+                  already {staged.duplicates.length === 1 ? "matches an entry" : "match entries"}{" "}
+                  you have, by name and username.
+                </li>
+              ) : null}
+              {staged.skipped > 0 ? (
+                <li>
+                  <strong className="text-ink tabular-nums">{staged.skipped}</strong>{" "}
+                  {staged.skipped === 1 ? "row was" : "rows were"} skipped for having no name
+                  or no password.
+                </li>
+              ) : null}
+            </ul>
+          </div>
+
+          {staged.duplicates.length > 0 ? (
+            <label className="flex cursor-pointer items-start gap-2.5 text-[0.8125rem] leading-relaxed text-ink-muted">
+              <input
+                type="checkbox"
+                checked={includeDuplicates}
+                onChange={(event) => setIncludeDuplicates(event.target.checked)}
+                className="mt-0.5 size-4 shrink-0 accent-[var(--ink)]"
+              />
+              <span>
+                <span className="block font-medium text-ink">Import the duplicates too</span>
+                Off by default: two entries with the same name and username are almost always
+                the same account imported twice, and telling them apart afterwards means
+                opening both.
+              </span>
+            </label>
+          ) : null}
+
+          {error ? (
+            <Notice tone="critical" icon={<AlertTriangle className="size-4" />}>
+              {error}
+            </Notice>
+          ) : null}
+
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={busy}
+              onClick={() => setStaged(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              className="flex-1"
+              loading={busy}
+              disabled={total === 0}
+              onClick={() => void confirm()}
+            >
+              {total === 0
+                ? "Nothing new to import"
+                : `Import ${total} ${total === 1 ? "entry" : "entries"}`}
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <Button
+            variant="secondary"
+            size="sm"
+            className="mt-4"
+            onClick={() => inputRef.current?.click()}
+          >
+            <Upload className="size-3.5" aria-hidden />
+            Choose a file
+          </Button>
+
+          {imported !== null ? (
+            <Notice tone="positive" className="mt-4" icon={<Check className="size-4" />}>
+              {imported} {imported === 1 ? "entry" : "entries"} imported and encrypted.
+            </Notice>
+          ) : null}
+
+          {error ? (
+            <Notice tone="critical" className="mt-4" icon={<AlertTriangle className="size-4" />}>
+              {error}
+            </Notice>
+          ) : null}
+        </>
+      )}
+    </Card>
+  );
+}
+
 const AUTO_LOCK_CHOICES = [
   { minutes: 1, label: "1 min" },
   { minutes: 5, label: "5 min" },
@@ -233,6 +588,12 @@ export function SettingsView() {
         password: item.password,
         url: item.url ?? "",
         notes: item.notes ?? "",
+        // Everything an entry holds, including the second factor: an export
+        // that quietly dropped the authenticator secret would look complete
+        // and leave the user locked out of the account it belongs to.
+        totp: item.totp ?? "",
+        tags: item.tags ?? [],
+        favourite: item.favourite === true,
       })),
     };
 
@@ -380,6 +741,8 @@ export function SettingsView() {
         </Trace>
       </section>
 
+      <ChangePassphraseSection />
+
       <PasskeySection />
 
       {/*
@@ -402,6 +765,8 @@ export function SettingsView() {
       <Card className="p-5 sm:p-6">
         <InstallSection />
       </Card>
+
+      <ImportSection />
 
       <Card className="p-5 sm:p-6">
         <h2 className="text-[0.9375rem] font-semibold tracking-tight">Export</h2>

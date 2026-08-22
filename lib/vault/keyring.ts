@@ -413,6 +413,68 @@ export async function rewrapWithNewPassphrase(
   }
 }
 
+/**
+ * Re-wraps the root key under a new passphrase, proving the old one first.
+ *
+ * The recovery-phrase path above exists for a passphrase that is *forgotten*.
+ * This is the other case, and the far more common one: a passphrase the user
+ * still has and wants to stop using. Requiring 24 words to rotate a passphrase
+ * would leave most people never rotating it, and would mean fetching the
+ * phrase out of wherever it is safely written down — handling it more often
+ * than the design intends.
+ *
+ * What does not change: the root key, the verifier, the wrapped auth secret,
+ * every entry ciphertext, and every sealed passkey record. Only the Argon2id
+ * salt and the wrap are new, so the vault does not have to be rewritten and
+ * registered authenticators keep working.
+ */
+export async function rewrapWithPassphrase(
+  accountId: string,
+  envelope: KeyEnvelope,
+  currentPassphrase: string,
+  newPassphrase: string,
+): Promise<KeyEnvelope> {
+  assertAcceptableKdfParams(envelope.kdf);
+
+  const currentSalt = fromBase64Url(envelope.salt);
+  const nextSalt = randomBytes(16);
+  let currentKek: Uint8Array | null = null;
+  let nextKek: Uint8Array | null = null;
+  let rootKey: Uint8Array | null = null;
+
+  try {
+    currentKek = await deriveKeyEncryptionKey(currentPassphrase, currentSalt, envelope.kdf);
+    try {
+      rootKey = await open(
+        await importAesKey(currentKek),
+        envelope.wrapped,
+        envelopeAad(accountId),
+      );
+    } catch {
+      throw new IncorrectPassphraseError();
+    }
+
+    // Re-derived at the current defaults rather than the envelope's, so a
+    // vault created years ago picks up today's cost parameters the moment its
+    // passphrase is rotated.
+    nextKek = await deriveKeyEncryptionKey(newPassphrase, nextSalt, DEFAULT_KDF_PARAMS);
+    const wrapped = await seal(await importAesKey(nextKek), rootKey, envelopeAad(accountId));
+
+    return {
+      version: 1,
+      salt: toBase64Url(nextSalt),
+      kdf: DEFAULT_KDF_PARAMS,
+      wrapped,
+      verifier: envelope.verifier,
+      auth: envelope.auth,
+      rootSalt: envelope.rootSalt,
+      createdAt: envelope.createdAt,
+    };
+  } finally {
+    wipe(currentKek, nextKek, rootKey);
+  }
+}
+
 export class IncorrectPassphraseError extends Error {
   constructor() {
     super("That passphrase does not unlock this vault.");

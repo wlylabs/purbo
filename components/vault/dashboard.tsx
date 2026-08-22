@@ -1,13 +1,14 @@
 "use client";
 
 import { KeyRound, Settings, Wand2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Tabs, tabIds, type TabItem } from "@/components/ui/tabs";
 import { useVault } from "@/lib/vault/provider";
+import { CommandPalette } from "./command-palette";
 import { Generator } from "./generator";
 import { SettingsView } from "./settings-view";
-import { VaultView } from "./vault-view";
+import { VaultView, type VaultIntent } from "./vault-view";
 
 type Tab = "vault" | "generator" | "settings";
 
@@ -18,6 +19,14 @@ function isTab(value: string | null): value is Tab {
 export function Dashboard() {
   const { items } = useVault();
   const [tab, setTab] = useState<Tab>("vault");
+  /**
+   * A request made from outside the vault panel — the command palette asking
+   * for a new entry while the user is looking at Settings. It is state rather
+   * than a call because the panel is keyed on the tab and therefore may not
+   * be mounted yet at the moment the palette runs.
+   */
+  const [intent, setIntent] = useState<VaultIntent | null>(null);
+  const clearIntent = useCallback(() => setIntent(null), []);
 
   // Stable between renders: the strip re-measures its marker whenever the
   // item list identity changes, and a fresh array every render would have it
@@ -77,7 +86,9 @@ export function Dashboard() {
               tabIndex={-1}
               className="animate-fade"
             >
-              {id === "vault" ? <VaultView /> : null}
+              {id === "vault" ? (
+                <VaultView intent={intent} onIntentHandled={clearIntent} />
+              ) : null}
               {id === "generator" ? (
                 <div className="max-w-lg">
                   <Generator />
@@ -88,6 +99,11 @@ export function Dashboard() {
           );
         })}
       </div>
+
+      <CommandPalette
+        onNavigate={setTab}
+        onNewEntry={() => setIntent({ kind: "new-entry" })}
+      />
     </div>
   );
 }

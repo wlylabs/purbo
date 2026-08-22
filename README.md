@@ -130,6 +130,14 @@ record is sealed.
   and a mask is what a shoulder over the screen is up against. Charging an
   Argon2id derivation to read what the unlock already decrypted bought
   nothing the eye toggle does not.
+- **Second factors sit beside the first, and that is a trade.** An entry can
+  hold a TOTP secret, and the code is computed here from WebCrypto's HMAC —
+  no network, no service, and the seed never leaves the entry's AES-GCM box.
+  What it costs is honest to state: a vault holding both factors is one thing
+  to steal rather than two. What it buys is a second factor that gets turned
+  on at all, because it is reachable in the place the password already is. An
+  authenticator app on a separate device is still the stronger arrangement,
+  and nothing here stops you keeping one.
 - **The vault re-locks** after inactivity, optionally the moment the tab stops
   being what is on screen, and copied passwords are cleared from the clipboard
   after 30 seconds if nothing has overwritten them.
@@ -143,6 +151,27 @@ record is sealed.
   is `'none'`, and WebAuthn is granted to this origin alone via
   `publickey-credentials-get=(self)` — an embedded frame can never ask for an
   assertion on Purbo's behalf.
+
+### Getting your data in and out
+
+Nothing here is a lock-in. Settings exports every entry as plaintext JSON —
+the largest single disclosure the app can make, so it re-checks the passphrase
+first and says plainly what the file is.
+
+Import reads Purbo's own export, Bitwarden's JSON and CSV, 1Password, LastPass,
+Chrome, and any CSV with a header row it can map. The file is read with
+`File.text()` and parsed in the tab: nothing is uploaded to be parsed, because
+an import that posted a plaintext CSV somewhere "just to read the columns"
+would hand over in one request exactly what the rest of this design protects.
+Counts are shown before anything is written, and entries matching one you
+already have — same name, same username — are left out unless you say
+otherwise, since an accidental double import is not undoable one row at a time.
+
+Changing a passphrase is a re-wrap, not a re-encryption: the root key is
+unchanged, so entries stay valid and registered passkeys keep working. Proving
+the current passphrase is enough for it — requiring the 24 words to rotate a
+passphrase would mean taking the recovery phrase out of wherever it is safely
+written down, which is the larger risk of the two.
 
 ## Installing it
 
@@ -290,9 +319,9 @@ app/
   api/vault/          GET/PUT/DELETE encrypted blobs
   api/auth/           Challenge, session, passkey records
 lib/
-  crypto/             Primitives, KDFs, AEAD, BIP39, generator
+  crypto/             Primitives, KDFs, AEAD, BIP39, generator, TOTP
   auth/               Identity derivation, session tokens, passkeys
-  vault/              Key hierarchy, record encryption, state machine
+  vault/              Key hierarchy, record encryption, state machine, tags, import
   storage/            IndexedDB cache, tab session keys, remote sync client
   pwa/                Install-prompt state
   server/             Auth, tokens, KV driver, rate limiting, wire validation

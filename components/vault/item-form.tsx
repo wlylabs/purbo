@@ -1,14 +1,19 @@
 "use client";
 
-import { Wand2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Star, Wand2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input, PasswordInput, Textarea } from "@/components/ui/input";
-import { Modal, Notice } from "@/components/ui/primitives";
+import { Chip, Modal, Notice } from "@/components/ui/primitives";
+import { isValidTotpInput } from "@/lib/crypto/totp";
+import { normaliseTags } from "@/lib/vault/tags";
 import type { VaultItem, VaultItemDraft } from "@/lib/vault/types";
+import { copyWithAutoClear } from "@/lib/utils";
 import { Generator } from "./generator";
 import { StrengthMeter } from "./strength-meter";
+import { TagInput } from "./tag-input";
+import { TotpCode } from "./totp-code";
 
 const EMPTY: VaultItemDraft = {
   name: "",
@@ -16,17 +21,22 @@ const EMPTY: VaultItemDraft = {
   password: "",
   url: "",
   notes: "",
+  totp: "",
+  tags: [],
 };
 
 export function ItemForm({
   open,
   item,
+  tagSuggestions = [],
   onClose,
   onSave,
 }: {
   open: boolean;
   /** Present when editing; absent when creating. */
   item?: VaultItem | null;
+  /** Tags already used elsewhere in this vault, most-used first. */
+  tagSuggestions?: string[];
   onClose: () => void;
   onSave: (draft: VaultItemDraft, id?: string) => Promise<void>;
 }) {
@@ -47,6 +57,8 @@ export function ItemForm({
             password: item.password,
             url: item.url ?? "",
             notes: item.notes ?? "",
+            totp: item.totp ?? "",
+            tags: item.tags ?? [],
             favourite: item.favourite,
           }
         : EMPTY,
@@ -58,13 +70,20 @@ export function ItemForm({
   const update = <K extends keyof VaultItemDraft>(key: K, value: VaultItemDraft[K]) =>
     setDraft((current) => ({ ...current, [key]: value }));
 
+  const totp = draft.totp?.trim() ?? "";
+  // Checked as typed rather than only on submit: pasting a secret is where
+  // this goes wrong, and finding out at save time means finding out after the
+  // clipboard has moved on.
+  const totpValid = useMemo(() => totp === "" || isValidTotpInput(totp), [totp]);
+
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!draft.name.trim() || !draft.password) return;
+    if (!draft.name.trim() || !draft.password || !totpValid) return;
 
     setSaving(true);
     setError(null);
     try {
+      const tags = normaliseTags(draft.tags);
       await onSave(
         {
           ...draft,
@@ -72,6 +91,9 @@ export function ItemForm({
           username: draft.username.trim(),
           url: draft.url?.trim() || undefined,
           notes: draft.notes?.trim() || undefined,
+          totp: totp || undefined,
+          tags: tags.length > 0 ? tags : undefined,
+          favourite: draft.favourite || undefined,
         },
         item?.id,
       );
@@ -149,6 +171,37 @@ export function ItemForm({
           autoComplete="off"
         />
 
+        {/* The second factor, kept with the first. Worth being plain about:
+            a vault holding both is one thing to steal rather than two, and
+            the trade is that a code within reach is a code people turn on. */}
+        <div className="space-y-3">
+          <Input
+            label="Authenticator secret"
+            value={draft.totp ?? ""}
+            onChange={(event) => update("totp", event.target.value)}
+            placeholder="JBSWY3DPEHPK3PXP or otpauth://totp/…"
+            autoComplete="off"
+            spellCheck={false}
+            className="font-mono tracking-tight"
+            error={totpValid ? null : "Not a base32 secret or an otpauth:// URI."}
+            hint={
+              totpValid
+                ? "Optional. Paste the setup key a site shows beside its QR code — codes are computed on this device."
+                : undefined
+            }
+          />
+          {totp && totpValid ? (
+            <TotpCode secret={totp} onCopy={(code) => copyWithAutoClear(code)} />
+          ) : null}
+        </div>
+
+        <TagInput
+          value={draft.tags ?? []}
+          onChange={(tags) => update("tags", tags)}
+          suggestions={tagSuggestions}
+          disabled={saving}
+        />
+
         <Textarea
           label="Notes"
           value={draft.notes ?? ""}
@@ -156,6 +209,22 @@ export function ItemForm({
           placeholder="Recovery codes, security questions, anything else."
           rows={3}
         />
+
+        <div className="flex flex-wrap items-center gap-3">
+          <Chip
+            selected={draft.favourite === true}
+            aria-pressed={draft.favourite === true}
+            onClick={() => update("favourite", !draft.favourite)}
+            disabled={saving}
+          >
+            <Star
+              className={draft.favourite ? "mr-1.5 inline size-3.5 align-[-2px] fill-current" : "mr-1.5 inline size-3.5 align-[-2px]"}
+              aria-hidden
+            />
+            Favourite
+          </Chip>
+          <span className="text-xs text-ink-subtle">Keeps this entry at the top of the list.</span>
+        </div>
 
         {error ? <Notice tone="critical">{error}</Notice> : null}
 
@@ -167,7 +236,7 @@ export function ItemForm({
             type="submit"
             className="flex-1"
             loading={saving}
-            disabled={!draft.name.trim() || !draft.password}
+            disabled={!draft.name.trim() || !draft.password || !totpValid}
           >
             {item ? "Save changes" : "Add entry"}
           </Button>
