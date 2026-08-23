@@ -664,12 +664,13 @@ export function SettingsView() {
             className="mt-0.5 size-4 shrink-0 accent-[var(--ink)]"
           />
           <span>
-            <span className="block font-medium text-ink">Cover the screen when I switch away</span>
-            Paints over the vault while this tab is in the background, so what is on screen
-            is not your entries — in the phone&rsquo;s app switcher, on a shared screen, or
-            in the second before you look back. Coming back lifts it; no unlock, so this is
-            about who can see the vault rather than who can use it. Phone app switchers
-            snapshot on their own schedule, so treat that one as likely, not certain.
+            <span className="block font-medium text-ink">Blur the screen when I switch away</span>
+            Blurs the vault while this tab is in the background — in the phone&rsquo;s app
+            switcher, on a shared screen, or in the second before you look back. The app
+            stays recognisable enough to pick out of a stack of them; nothing on it can be
+            read. Coming back lifts it; no unlock, so this is about who can see the vault
+            rather than who can use it. Phone app switchers snapshot on their own schedule,
+            so treat that one as likely, not certain.
           </span>
         </label>
       </Card>

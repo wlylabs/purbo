@@ -133,8 +133,9 @@ record is sealed.
 - **The app switcher is a screenshot, and the web cannot opt out of it.** A
   phone keeps a thumbnail of every backgrounded app, and for a decrypted vault
   that thumbnail is the leak. Native apps set one flag to be excluded; there is
-  no such flag on the web, so Purbo covers the page instead — on the same
-  signal, before the system takes its picture. Against a browser tab, a second
+  no such flag on the web, so Purbo blurs the page instead — on the same
+  signal, before the system takes its picture, leaving the app recognisable in
+  the switcher and nothing on it readable. Against a browser tab, a second
   monitor or a screen share that is exact, because the page is still being
   painted. Against the phone's own snapshot it is best-effort, and is stated
   that way in the setting rather than sold as the native guarantee.
