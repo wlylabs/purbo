@@ -130,6 +130,14 @@ record is sealed.
   and a mask is what a shoulder over the screen is up against. Charging an
   Argon2id derivation to read what the unlock already decrypted bought
   nothing the eye toggle does not.
+- **The app switcher is a screenshot, and the web cannot opt out of it.** A
+  phone keeps a thumbnail of every backgrounded app, and for a decrypted vault
+  that thumbnail is the leak. Native apps set one flag to be excluded; there is
+  no such flag on the web, so Purbo covers the page instead — on the same
+  signal, before the system takes its picture. Against a browser tab, a second
+  monitor or a screen share that is exact, because the page is still being
+  painted. Against the phone's own snapshot it is best-effort, and is stated
+  that way in the setting rather than sold as the native guarantee.
 - **Second factors sit beside the first, and that is a trade.** An entry can
   hold a TOTP secret, and the code is computed here from WebCrypto's HMAC —
   no network, no service, and the seed never leaves the entry's AES-GCM box.

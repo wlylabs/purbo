@@ -146,6 +146,9 @@ interface VaultContextValue {
   /** Lock as soon as the tab stops being the thing on screen. */
   lockOnHidden: boolean;
   setLockOnHidden(value: boolean): void;
+  /** Cover the vault while the tab is not what is on screen. */
+  privacyScreen: boolean;
+  setPrivacyScreen(value: boolean): void;
   clearError(): void;
 }
 
@@ -157,6 +160,8 @@ const AUTO_LOCK_STORAGE_KEY = "purbo:auto-lock-minutes";
 const DEFAULT_AUTO_LOCK_MINUTES = 10;
 
 const LOCK_ON_HIDDEN_STORAGE_KEY = "purbo:lock-on-hidden";
+
+const PRIVACY_SCREEN_STORAGE_KEY = "purbo:privacy-screen";
 
 /**
  * How long a step-up confirmation lasts.
@@ -191,6 +196,9 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
   const [passkeyHint, setPasskeyHint] = useState(false);
   const [setupPending, setSetupPending] = useState(false);
   const [lockOnHidden, setLockOnHiddenState] = useState(false);
+  // On unless turned off: unlike locking on the same signal, a cover costs
+  // the user nothing to be wrong about — coming back lifts it.
+  const [privacyScreen, setPrivacyScreenState] = useState(true);
   const [verifiedAt, setVerifiedAt] = useState<number | null>(null);
 
   // Key material and ciphertext live in refs, never in state: state is
@@ -214,6 +222,7 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
     const parsed = stored ? Number(stored) : NaN;
     if (Number.isFinite(parsed) && parsed >= 0) setAutoLockMinutesState(parsed);
     setLockOnHiddenState(window.localStorage.getItem(LOCK_ON_HIDDEN_STORAGE_KEY) === "1");
+    setPrivacyScreenState(window.localStorage.getItem(PRIVACY_SCREEN_STORAGE_KEY) !== "0");
   }, []);
 
   const setAutoLockMinutes = useCallback((minutes: number) => {
@@ -224,6 +233,11 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
   const setLockOnHidden = useCallback((value: boolean) => {
     setLockOnHiddenState(value);
     window.localStorage.setItem(LOCK_ON_HIDDEN_STORAGE_KEY, value ? "1" : "0");
+  }, []);
+
+  const setPrivacyScreen = useCallback((value: boolean) => {
+    setPrivacyScreenState(value);
+    window.localStorage.setItem(PRIVACY_SCREEN_STORAGE_KEY, value ? "1" : "0");
   }, []);
 
   /** Records a confirmed round-trip to the server. */
@@ -1009,6 +1023,8 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
       setAutoLockMinutes,
       lockOnHidden,
       setLockOnHidden,
+      privacyScreen,
+      setPrivacyScreen,
       clearError: () => setError(null),
     }),
     [
@@ -1045,6 +1061,8 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
       setAutoLockMinutes,
       lockOnHidden,
       setLockOnHidden,
+      privacyScreen,
+      setPrivacyScreen,
     ],
   );
 
