@@ -560,6 +560,8 @@ export function SettingsView() {
     setAutoLockMinutes,
     lockOnHidden,
     setLockOnHidden,
+    privacyScreen,
+    setPrivacyScreen,
     items,
     destroyVault,
     syncState,
@@ -648,6 +650,27 @@ export function SettingsView() {
             Locks the moment this tab stops being what is on screen — another tab, another
             app, a locked phone. Worth it on a shared or public machine; on a phone it
             means glancing at a notification costs you an unlock.
+          </span>
+        </label>
+
+        {/* The cheap half of the same idea. Locking answers "who can use the
+            vault"; this answers "who can see it" — including in places the
+            vault is on screen without this tab being in front of you. */}
+        <label className="mt-4 flex cursor-pointer items-start gap-2.5 text-[0.8125rem] leading-relaxed text-ink-muted">
+          <input
+            type="checkbox"
+            checked={privacyScreen}
+            onChange={(event) => setPrivacyScreen(event.target.checked)}
+            className="mt-0.5 size-4 shrink-0 accent-[var(--ink)]"
+          />
+          <span>
+            <span className="block font-medium text-ink">Blur the screen when I switch away</span>
+            Blurs the vault while this tab is in the background — in the phone&rsquo;s app
+            switcher, on a shared screen, or in the second before you look back. The app
+            stays recognisable enough to pick out of a stack of them; nothing on it can be
+            read. Coming back lifts it; no unlock, so this is about who can see the vault
+            rather than who can use it. Phone app switchers snapshot on their own schedule,
+            so treat that one as likely, not certain.
           </span>
         </label>
       </Card>

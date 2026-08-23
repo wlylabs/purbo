@@ -6,6 +6,7 @@ import { AppHeader } from "@/components/vault/app-header";
 import { Dashboard } from "@/components/vault/dashboard";
 import { LockScreen } from "@/components/vault/lock-screen";
 import { Onboarding } from "@/components/vault/onboarding";
+import { PrivacyScreen } from "@/components/vault/privacy-screen";
 import { useVault } from "@/lib/vault/provider";
 
 /**
@@ -52,6 +53,7 @@ export function VaultWorkspace() {
         {status === "locked" ? <LockScreen /> : null}
         {status === "unlocked" && !finishingSetup ? <Dashboard /> : null}
       </main>
+      <PrivacyScreen />
     </div>
   );
 }
