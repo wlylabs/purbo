@@ -182,3 +182,53 @@ for (const { dir, file, size, cornerRadius, glyphScale } of ICONS) {
   writeFileSync(join(dir, file), png);
   process.stdout.write(`${file}  ${size}×${size}  ${(png.length / 1024).toFixed(1)} kB\n`);
 }
+
+/* ------------------------------------------------------------------ *
+ * ICO container
+ *
+ * `app/icon.svg` is what browsers actually use, but plenty of link
+ * scrapers, feed readers and "add site" tools still fetch `/favicon.ico`
+ * directly and never look at the `<link rel="icon">` tags in the page
+ * head at all. Leave that path 404ing and they render a generic globe
+ * instead of the mark. Modern ICOs can just wrap PNG frames, so this
+ * reuses the encoder above instead of pulling in an image toolchain.
+ * ------------------------------------------------------------------ */
+
+function encodeIco(frames) {
+  const dir = Buffer.alloc(6 + frames.length * 16);
+  dir.writeUInt16LE(0, 0); // reserved
+  dir.writeUInt16LE(1, 2); // type: icon
+  dir.writeUInt16LE(frames.length, 4);
+
+  let offset = dir.length;
+  const images = [];
+  frames.forEach(({ size, png }, i) => {
+    const entry = 6 + i * 16;
+    dir[entry] = size >= 256 ? 0 : size; // width
+    dir[entry + 1] = size >= 256 ? 0 : size; // height
+    dir[entry + 2] = 0; // palette
+    dir[entry + 3] = 0; // reserved
+    dir.writeUInt16LE(1, entry + 4); // colour planes
+    dir.writeUInt16LE(32, entry + 6); // bits per pixel
+    dir.writeUInt32LE(png.length, entry + 8);
+    dir.writeUInt32LE(offset, entry + 12);
+    offset += png.length;
+    images.push(png);
+  });
+
+  return Buffer.concat([dir, ...images]);
+}
+
+// Matches icon.svg's own proportions (rx="7" on a 32-unit box, glyph drawn
+// 1:1 in that same space) so the ICO fallback reads as the same mark, not
+// a different crop of it.
+const FAVICON_SIZES = [16, 32, 48];
+const faviconFrames = FAVICON_SIZES.map((size) => ({
+  size,
+  png: encodePng(size, render(size, { cornerRadius: 0.21875, glyphScale: 1 })),
+}));
+const ico = encodeIco(faviconFrames);
+writeFileSync(join(APP_DIR, "favicon.ico"), ico);
+process.stdout.write(
+  `favicon.ico  ${FAVICON_SIZES.join("/")}  ${(ico.length / 1024).toFixed(1)} kB\n`,
+);
