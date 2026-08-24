@@ -32,6 +32,12 @@ export const metadata: Metadata = {
     "Everything is encrypted in your browser before it leaves the device.",
   applicationName: "Purbo",
   manifest: "/manifest.webmanifest",
+  icons: {
+    // favicon.ico, icon.svg and apple-icon.png are picked up automatically
+    // from their app/ file conventions; only the Safari pinned-tab mask
+    // needs declaring explicitly, since it isn't one of those conventions.
+    other: [{ rel: "mask-icon", url: "/safari-pinned-tab.svg", color: "#09090b" }],
+  },
   // Installed on iOS, Purbo runs without Safari's chrome; the status bar is
   // left to follow the page's theme colour rather than being forced dark.
   appleWebApp: {
