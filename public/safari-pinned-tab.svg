@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!--
+    Safari's pinned-tab icon is a mask: every non-transparent pixel is
+    recoloured to the `color` given in the icons.other link tag, so this is
+    the same single evenodd silhouette as components/logo.tsx (square cut by
+    the keyhole), not the two-layer background+glyph drawing in icon.svg.
+  -->
+  <path
+    fill-rule="evenodd"
+    clip-rule="evenodd"
+    d="M6 3.5h20A2.5 2.5 0 0 1 28.5 6v20a2.5 2.5 0 0 1-2.5 2.5H6A2.5 2.5 0 0 1 3.5 26V6A2.5 2.5 0 0 1 6 3.5Zm10 6.25a4 4 0 0 0-1.75 7.6V22a1.75 1.75 0 0 0 3.5 0v-4.65a4 4 0 0 0-1.75-7.6Z"
+    fill="#000000"
+  />
+</svg>
