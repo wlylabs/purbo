@@ -102,48 +102,48 @@ function AccountMenu() {
         <ChevronDown className="size-3.5 text-ink-subtle" aria-hidden />
       </button>
 
-      {open ? (
-        <div
-          role="menu"
-          className="absolute right-0 top-full z-50 mt-2 w-72 overflow-hidden rounded-[var(--radius)] border border-line bg-elevated shadow-pop animate-in-up"
-        >
-          <div className="border-b border-line px-3 py-2.5">
-            <p className="text-[0.8125rem] font-medium">Account</p>
-            <p className="mt-1 break-all font-mono text-[0.6875rem] leading-relaxed text-ink-subtle">
-              {accountId}
-            </p>
-            <p className="mt-2 text-[0.6875rem] leading-relaxed text-ink-subtle">
-              Derived from your recovery phrase. It identifies your vault to the
-              server and nothing else.
-            </p>
-          </div>
-          {/* Not "sign out": there is no session anywhere to end. What this
-              does is delete the encrypted copy cached here, which is a real
-              and irreversible local action, so it is named for that. */}
-          <button
-            type="button"
-            role="menuitem"
-            disabled={forgetting}
-            onClick={async () => {
-              setForgetting(true);
-              try {
-                await forgetDevice();
-              } finally {
-                setForgetting(false);
-                setOpen(false);
-              }
-            }}
-            className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[0.8125rem] text-ink-muted interactive hover:bg-tint hover:text-ink active:bg-tint-strong disabled:pointer-events-none disabled:text-ink-subtle"
-          >
-            <Trash2 className="size-3.5" aria-hidden />
-            Forget this device
-          </button>
-          <p className="border-t border-line px-3 py-2 text-[0.6875rem] leading-relaxed text-ink-subtle">
-            Removes the local copy only. Your vault stays on the server — come
-            back with the recovery phrase or a passkey.
+      <div
+        role="menu"
+        data-open={open}
+        inert={!open}
+        className="panel-reveal absolute right-0 top-full z-50 mt-2 w-72 overflow-hidden rounded-[var(--radius)] border border-line bg-elevated shadow-pop"
+      >
+        <div className="border-b border-line px-3 py-2.5">
+          <p className="text-[0.8125rem] font-medium">Account</p>
+          <p className="mt-1 break-all font-mono text-[0.6875rem] leading-relaxed text-ink-subtle">
+            {accountId}
+          </p>
+          <p className="mt-2 text-[0.6875rem] leading-relaxed text-ink-subtle">
+            Derived from your recovery phrase. It identifies your vault to the
+            server and nothing else.
           </p>
         </div>
-      ) : null}
+        {/* Not "sign out": there is no session anywhere to end. What this
+            does is delete the encrypted copy cached here, which is a real
+            and irreversible local action, so it is named for that. */}
+        <button
+          type="button"
+          role="menuitem"
+          disabled={forgetting}
+          onClick={async () => {
+            setForgetting(true);
+            try {
+              await forgetDevice();
+            } finally {
+              setForgetting(false);
+              setOpen(false);
+            }
+          }}
+          className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[0.8125rem] text-ink-muted interactive hover:bg-tint hover:text-ink active:bg-tint-strong disabled:pointer-events-none disabled:text-ink-subtle"
+        >
+          <Trash2 className="size-3.5" aria-hidden />
+          Forget this device
+        </button>
+        <p className="border-t border-line px-3 py-2 text-[0.6875rem] leading-relaxed text-ink-subtle">
+          Removes the local copy only. Your vault stays on the server — come
+          back with the recovery phrase or a passkey.
+        </p>
+      </div>
     </div>
   );
 }
