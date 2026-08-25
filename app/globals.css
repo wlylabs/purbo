@@ -409,6 +409,44 @@
   .divide-line > * + * {
     border-top: 1px solid var(--line);
   }
+
+  /*
+   * A floating panel that opens and closes with the same feel, not just a
+   * fade in. Toggle `data-open` rather than mounting and unmounting — that
+   * is what gives the close its own transform/opacity/blur transition
+   * instead of the panel just vanishing, and what keeps disclosure content
+   * (like the account menu) out of the tab order via `pointer-events` while
+   * still letting the caller pair it with `inert` for focus and a11y.
+   *
+   * Durations differ on purpose: closing is quicker than opening, the way a
+   * menu should feel dismissed rather than lingering.
+   */
+  .panel-reveal {
+    --panel-open-dur: 400ms;
+    --panel-close-dur: 350ms;
+    --panel-translate-y: 8px;
+    --panel-blur: 2px;
+    --panel-ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+    transform: translateY(var(--panel-translate-y));
+    opacity: 0;
+    filter: blur(var(--panel-blur));
+    pointer-events: none;
+    transition:
+      transform var(--panel-close-dur) var(--panel-ease),
+      opacity var(--panel-close-dur) var(--panel-ease),
+      filter var(--panel-close-dur) var(--panel-ease);
+  }
+  .panel-reveal[data-open="true"] {
+    transform: translateY(0);
+    opacity: 1;
+    filter: blur(0);
+    pointer-events: auto;
+    transition:
+      transform var(--panel-open-dur) var(--panel-ease),
+      opacity var(--panel-open-dur) var(--panel-ease),
+      filter var(--panel-open-dur) var(--panel-ease);
+  }
 }
 
 @layer utilities {
