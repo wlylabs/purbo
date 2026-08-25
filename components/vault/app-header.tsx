@@ -106,6 +106,9 @@ function AccountMenu() {
         role="menu"
         data-open={open}
         inert={!open}
+        // A blur crossfade reads as intentional on something the size of a
+        // modal; on a menu this small it just muddies the text mid-transition.
+        style={{ "--panel-blur": "0px" } as React.CSSProperties}
         className="panel-reveal absolute right-0 top-full z-50 mt-2 w-72 overflow-hidden rounded-[var(--radius)] border border-line bg-elevated shadow-pop"
       >
         <div className="border-b border-line px-3 py-2.5">
