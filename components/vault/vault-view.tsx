@@ -232,6 +232,26 @@ export function VaultView({
             />
           ) : null}
 
+          {/*
+            What the search and the filters did, for someone who cannot see
+            the board change.
+
+            Typing narrows the list silently: the count above it is ordinary
+            text, and the cards themselves are below the fold of a screen
+            reader's cursor. A live region is the only thing that reports the
+            result of a keystroke here. It is mounted whether or not there are
+            matches — a region that appears at the same moment its text does is
+            a region nothing announces — and `polite` lets a fast typist finish
+            the word before it reads the answer.
+          */}
+          <p aria-live="polite" className="sr-only">
+            {filtered.length === 0
+              ? "No entries match."
+              : `${filtered.length} of ${items.length} ${
+                  items.length === 1 ? "entry" : "entries"
+                } shown.`}
+          </p>
+
           {filtered.length === 0 ? (
             <div className="animate-fade rounded-[var(--radius-lg)] border border-line bg-elevated py-12 text-center sm:py-16">
               <p className="text-[0.9375rem] font-medium">No matches</p>

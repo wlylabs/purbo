@@ -234,6 +234,21 @@
     scroll-behavior: smooth;
   }
 
+  /*
+   * A fragment link lands its target's top edge at the top of the viewport,
+   * which — under a sticky bar — is behind it. Both shells here put a 4rem
+   * bar there, and on a phone that bar is taller than a section's own top
+   * padding, so the label the link is named after is the first thing hidden.
+   *
+   * The offset is the bar, the notch it may sit under, and a little air, so
+   * the heading arrives clear of the bar rather than tucked against it. Held
+   * in `:where()` so it carries no specificity: a section that wants a
+   * different landing can still say so with a utility.
+   */
+  :where(section[id], main[id], [id]:target) {
+    scroll-margin-top: calc(4rem + env(safe-area-inset-top) + 0.75rem);
+  }
+
   body {
     background-color: var(--canvas);
     color: var(--ink);

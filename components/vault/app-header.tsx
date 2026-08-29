@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronDown, Lock, Trash2 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import { Wordmark } from "@/components/logo";
 import { ThemeToggle } from "@/components/theme";
@@ -66,6 +66,26 @@ function AccountMenu() {
   const [open, setOpen] = useState(false);
   const [forgetting, setForgetting] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelId = useId();
+
+  /**
+   * Close, putting focus back where it came from.
+   *
+   * The panel goes `inert` on the way out, and inert does not politely hand
+   * focus back — whatever was focused inside simply stops being focusable and
+   * the document falls back to `<body>`. So a keyboard user who tabbed to
+   * "Forget this device" and pressed Escape would land nowhere, with the next
+   * Tab restarting from the top of the page. Returning to the trigger is both
+   * the fix and the right place to be: it is what was just closed.
+   *
+   * Guarded on focus actually being inside, so the click-outside path — where
+   * the pointer has already chosen somewhere else to be — is not fought.
+   */
+  const close = () => {
+    setOpen(false);
+    if (ref.current?.contains(document.activeElement)) triggerRef.current?.focus();
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -73,7 +93,7 @@ function AccountMenu() {
       if (ref.current && !ref.current.contains(event.target as Node)) setOpen(false);
     };
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key === "Escape") close();
     };
     document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);
@@ -90,10 +110,11 @@ function AccountMenu() {
   return (
     <div className="relative" ref={ref}>
       <button
+        ref={triggerRef}
         type="button"
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => (open ? close() : setOpen(true))}
         aria-expanded={open}
-        aria-haspopup="menu"
+        aria-controls={panelId}
         className="flex items-center gap-2 rounded-[var(--radius-sm)] border border-line-control px-2.5 py-1.5 text-[0.8125rem] interactive hover:bg-tint active:bg-tint-strong"
       >
         <span className="max-w-32 truncate font-mono text-[0.75rem] text-ink-muted">
@@ -102,8 +123,23 @@ function AccountMenu() {
         <ChevronDown className="size-3.5 text-ink-subtle" aria-hidden />
       </button>
 
+      {/*
+        A disclosure, not a menu.
+        `role="menu"` is the same kind of promise `<ChipRadioGroup>` exists to
+        stop being made loosely: it says arrow keys move between items and
+        that every child is one. This panel is two paragraphs of prose, a
+        button and a footnote — prose is not a `menuitem`, and a menu with one
+        item has nothing for an arrow key to reach. Naming it for what it is
+        leaves Tab working, which is what actually gets a keyboard user to the
+        button.
+      */}
       <div
-        role="menu"
+        id={panelId}
+        // `aria-label` needs a role to land on: on a bare `<div>` it is not
+        // exposed at all, so the panel the trigger points at would have no
+        // name when a screen reader followed `aria-controls` into it.
+        role="group"
+        aria-label="Account"
         data-open={open}
         inert={!open}
         // A blur crossfade reads as intentional on something the size of a
@@ -126,7 +162,6 @@ function AccountMenu() {
             and irreversible local action, so it is named for that. */}
         <button
           type="button"
-          role="menuitem"
           disabled={forgetting}
           onClick={async () => {
             setForgetting(true);
@@ -134,7 +169,7 @@ function AccountMenu() {
               await forgetDevice();
             } finally {
               setForgetting(false);
-              setOpen(false);
+              close();
             }
           }}
           className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[0.8125rem] text-ink-muted interactive hover:bg-tint hover:text-ink active:bg-tint-strong disabled:pointer-events-none disabled:text-ink-subtle"

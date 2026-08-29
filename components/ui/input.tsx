@@ -18,6 +18,24 @@ export interface FieldProps {
   required?: boolean;
 }
 
+/**
+ * The id of whichever line is currently under the field, or nothing.
+ *
+ * A hint sitting under a field is help the sighted user reads on the way in;
+ * without this it is help nobody else is ever offered, because the label is
+ * the only thing the field is wired to. The error matters more still: its
+ * `role="alert"` announces the moment it appears, which covers the user who
+ * was already in the field and nobody who arrives afterwards — tabbing back
+ * to a field marked invalid would otherwise say "invalid" and never say why.
+ *
+ * Only ever one id, because only one of the two is rendered.
+ */
+function describedBy(id: string, { hint, error }: Pick<FieldProps, "hint" | "error">) {
+  if (error) return `${id}-error`;
+  if (hint) return `${id}-hint`;
+  return undefined;
+}
+
 function FieldShell({
   id,
   label,
@@ -36,11 +54,13 @@ function FieldShell({
       ) : null}
       {children}
       {error ? (
-        <p role="alert" className="text-xs text-critical">
+        <p id={`${id}-error`} role="alert" className="text-xs text-critical">
           {error}
         </p>
       ) : hint ? (
-        <p className="text-xs text-ink-subtle">{hint}</p>
+        <p id={`${id}-hint`} className="text-xs text-ink-subtle">
+          {hint}
+        </p>
       ) : null}
     </div>
   );
@@ -64,6 +84,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
         id={fieldId}
         required={required}
         aria-invalid={error ? true : undefined}
+        aria-describedby={describedBy(fieldId, { hint, error })}
         className={cn(FIELD_BASE, error && "border-critical", className)}
         {...props}
       />
@@ -94,6 +115,7 @@ export const PasswordInput = forwardRef<HTMLInputElement, PasswordInputProps>(
             type={revealed ? "text" : "password"}
             required={required}
             aria-invalid={error ? true : undefined}
+            aria-describedby={describedBy(fieldId, { hint, error })}
             // Password managers filling our own password manager creates a
             // confusing loop; opt out of browser autofill heuristics.
             autoComplete="off"
@@ -149,6 +171,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function 
         id={fieldId}
         required={required}
         aria-invalid={error ? true : undefined}
+        aria-describedby={describedBy(fieldId, { hint, error })}
         className={cn(FIELD_BASE, "resize-y min-h-20", error && "border-critical", className)}
         {...props}
       />

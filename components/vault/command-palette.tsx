@@ -53,6 +53,7 @@ export function CommandPalette({
 
   const dialogRef = useRef<HTMLDialogElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
   const dismissRef = useRef<number | null>(null);
   const listId = useId();
   const modifier = useModifierKey();
@@ -188,6 +189,27 @@ export function CommandPalette({
   // to sit at the index the third keystroke left behind.
   useEffect(() => setActive(0), [query]);
 
+  /*
+   * Follow the selection with the scroll port.
+   *
+   * The list is the only thing in the palette that scrolls, and the keyboard
+   * is how it is meant to be driven — so without this the fourth Down moves a
+   * highlight the user can no longer see, and Enter runs a row they were
+   * never shown. `nearest` is what keeps it a scroll rather than a jump: a
+   * row already on screen moves nothing, so the pointer selecting a visible
+   * row underneath the cursor does not yank the list out from under it.
+   *
+   * `scroll-behavior` is smooth on `html` only and does not inherit, so this
+   * lands immediately — which is what a held arrow key needs.
+   */
+  useEffect(() => {
+    const action = results[active];
+    if (!action) return;
+    listRef.current
+      ?.querySelector(`#${CSS.escape(`${listId}-${action.id}`)}`)
+      ?.scrollIntoView({ block: "nearest" });
+  }, [active, results, listId]);
+
   const withFeedback = useCallback(
     (message: string) => {
       setFeedback(message);
@@ -242,6 +264,12 @@ export function CommandPalette({
       setActive((current) =>
         results.length === 0 ? 0 : (current - 1 + results.length) % results.length,
       );
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      setActive(0);
+    } else if (event.key === "End") {
+      event.preventDefault();
+      setActive(Math.max(0, results.length - 1));
     } else if (event.key === "Enter") {
       event.preventDefault();
       const action = results[active];
@@ -286,9 +314,17 @@ export function CommandPalette({
           <Kbd>Esc</Kbd>
         </div>
 
-        <ul id={listId} role="listbox" aria-label="Results" className="min-h-0 flex-1 overflow-y-auto p-1.5">
+        <ul
+          ref={listRef}
+          id={listId}
+          role="listbox"
+          aria-label="Results"
+          className="min-h-0 flex-1 overflow-y-auto p-1.5"
+        >
           {results.length === 0 ? (
-            <li className="px-3 py-8 text-center text-[0.8125rem] text-ink-muted">
+            // A listbox owns options; a line of prose is not one, and leaving
+            // it unmarked makes it a nameless option a screen reader counts.
+            <li role="presentation" className="px-3 py-8 text-center text-[0.8125rem] text-ink-muted">
               Nothing matches “{query}”.
             </li>
           ) : (
