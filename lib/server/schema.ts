@@ -56,27 +56,67 @@ export const encryptedItemSchema = z
   })
   .strict();
 
+/**
+ * A deletion, as it travels between devices.
+ *
+ * Nothing but an id and a time — there is no ciphertext to bound, and the id
+ * is the same random string the entry had. Validated all the same, because a
+ * list the server stores is a list the server has to keep bounded.
+ */
+const tombstoneSchema = z
+  .object({
+    id: base64Url(64),
+    deletedAt: z.number().int().nonnegative(),
+  })
+  .strict();
+
 export const MAX_ITEMS = 5000;
+
+/** One tombstone per entry, so the same ceiling bounds both lists. */
+export const MAX_TOMBSTONES = MAX_ITEMS;
+
+function refuseDuplicates(
+  entries: readonly { id: string }[],
+  ctx: z.RefinementCtx,
+  path: string,
+): boolean {
+  const ids = new Set<string>();
+  for (const entry of entries) {
+    if (ids.has(entry.id)) {
+      ctx.addIssue({ code: "custom", message: `duplicate id: ${entry.id}`, path: [path] });
+      return false;
+    }
+    ids.add(entry.id);
+  }
+  return true;
+}
 
 export const putVaultSchema = z
   .object({
     envelope: keyEnvelopeSchema,
     items: z.array(encryptedItemSchema).max(MAX_ITEMS),
+    /** Optional: a client from before merging existed sends none. */
+    deleted: z.array(tombstoneSchema).max(MAX_TOMBSTONES).optional(),
     revision: z.number().int().nonnegative(),
   })
   .strict()
   .superRefine((value, ctx) => {
-    const ids = new Set<string>();
-    for (const item of value.items) {
-      if (ids.has(item.id)) {
+    if (!refuseDuplicates(value.items, ctx, "items")) return;
+    if (!refuseDuplicates(value.deleted ?? [], ctx, "deleted")) return;
+
+    // An entry cannot be both present and deleted: the client merges those
+    // two lists before it writes, so a payload carrying both is either a bug
+    // or a hand-made request, and neither should reach storage.
+    const live = new Set(value.items.map((item) => item.id));
+    for (const stone of value.deleted ?? []) {
+      if (live.has(stone.id)) {
         ctx.addIssue({
           code: "custom",
-          message: `duplicate item id: ${item.id}`,
-          path: ["items"],
+          message: `entry is both present and deleted: ${stone.id}`,
+          path: ["deleted"],
         });
         return;
       }
-      ids.add(item.id);
     }
   });
 
@@ -125,8 +165,19 @@ export const passkeyRecordSchema = z
     credentialId,
     rootSalt: base64Url(128),
     sealed: sealedBox,
+    /** The device's name, sealed under the vault's data key. */
+    label: sealedBox.optional(),
   })
   .strict();
+
+/**
+ * The handle naming one passkey in a revoke request.
+ *
+ * A hash of the credential id rather than the id itself: it is what the
+ * listing hands the client, and it means revoking a passkey does not require
+ * the device it belongs to be present to state its own id.
+ */
+export const passkeyHashSchema = z.string().regex(/^[0-9a-f]{64}$/, "expected a hash");
 
 export const passkeyLookupSchema = z.object({ credentialId }).strict();
 

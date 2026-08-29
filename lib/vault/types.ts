@@ -103,12 +103,44 @@ export interface PasskeySummary {
   /** Hash of the credential id — the record's storage key, not the id itself. */
   readonly hash: string;
   readonly createdAt: number;
+  /**
+   * What the user called the device, sealed under the vault's data key.
+   *
+   * A name is the difference between revoking the phone you lost and revoking
+   * everything because you cannot tell three identical rows apart. It is
+   * sealed rather than stored plainly for the same reason every other field
+   * is: "Ana's work MacBook" next to an account id is exactly the kind of
+   * thing this server is built not to know.
+   */
+  readonly label?: SealedBox;
+}
+
+/**
+ * A record of an entry that was deleted.
+ *
+ * Deletion has to be a fact that travels, not the absence of one. Two devices
+ * merge by taking the union of what each holds, and under a union an entry
+ * deleted on a phone is simply an entry the laptop still has — so it comes
+ * back. A tombstone is what makes "this is gone" outlive the entry.
+ *
+ * It carries no ciphertext and no name: the id (already random and meaningless
+ * on its own) and the moment it stopped existing, which is metadata the server
+ * can see for every entry anyway through `updatedAt`.
+ */
+export interface Tombstone {
+  id: string;
+  deletedAt: number;
 }
 
 /** The complete server-side record for one user. All opaque. */
 export interface EncryptedVault {
   envelope: KeyEnvelope;
   items: EncryptedItem[];
+  /**
+   * Entries deleted on some device, kept so the deletion survives a merge.
+   * Optional: vaults written before merging existed have none.
+   */
+  deleted?: Tombstone[];
   /** Monotonic counter for conflict detection on sync. */
   revision: number;
   updatedAt: number;

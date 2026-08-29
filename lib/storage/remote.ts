@@ -1,5 +1,10 @@
 import { NotAuthenticatedError, getSessionToken } from "@/lib/auth/session";
-import type { EncryptedVault, KeyEnvelope, EncryptedItem } from "@/lib/vault/types";
+import type {
+  EncryptedVault,
+  KeyEnvelope,
+  EncryptedItem,
+  Tombstone,
+} from "@/lib/vault/types";
 
 /**
  * Client for the encrypted vault API.
@@ -88,6 +93,8 @@ export async function fetchRemoteVault(): Promise<EncryptedVault | null> {
 export async function pushRemoteVault(payload: {
   envelope: KeyEnvelope;
   items: EncryptedItem[];
+  /** Deletions, so they survive a merge on the next device to sync. */
+  deleted: Tombstone[];
   revision: number;
 }): Promise<{ revision: number; updatedAt: number }> {
   const response = await authorisedFetch("/api/vault", {

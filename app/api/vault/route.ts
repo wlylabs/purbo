@@ -1,9 +1,9 @@
 import { authenticate } from "@/lib/server/auth";
-import { getKv, vaultKey } from "@/lib/server/kv";
+import { getKv, passkeyIndexKey, passkeyKey, vaultKey } from "@/lib/server/kv";
 import { clientIdentity, rateLimit } from "@/lib/server/ratelimit";
 import { handleError, json, rateLimited } from "@/lib/server/response";
 import { MAX_BODY_BYTES, putVaultSchema } from "@/lib/server/schema";
-import type { EncryptedVault } from "@/lib/vault/types";
+import type { EncryptedVault, PasskeySummary } from "@/lib/vault/types";
 
 /**
  * The encrypted vault endpoint.
@@ -45,12 +45,25 @@ export async function PUT(request: Request) {
     });
     if (!limit.allowed) return rateLimited(limit.retryAfterSeconds);
 
-    const declaredLength = Number(request.headers.get("content-length") ?? 0);
-    if (declaredLength > MAX_BODY_BYTES) {
+    // The header is a claim, not a measurement: a chunked request carries no
+    // `content-length` at all, and one that lies is trivial to send. Reading
+    // the body as text and weighing it is what actually bounds the parse.
+    if (Number(request.headers.get("content-length") ?? 0) > MAX_BODY_BYTES) {
       return json({ error: "payload_too_large" }, 413);
     }
 
-    const raw: unknown = await request.json().catch(() => null);
+    const body = await request.text().catch(() => null);
+    if (body === null) return json({ error: "invalid_payload" }, 400);
+    if (new Blob([body]).size > MAX_BODY_BYTES) {
+      return json({ error: "payload_too_large" }, 413);
+    }
+
+    let raw: unknown = null;
+    try {
+      raw = JSON.parse(body);
+    } catch {
+      return json({ error: "invalid_payload" }, 400);
+    }
     const parsed = putVaultSchema.safeParse(raw);
     if (!parsed.success) {
       return json({ error: "invalid_payload" }, 400);
@@ -72,6 +85,7 @@ export async function PUT(request: Request) {
     const vault: EncryptedVault = {
       envelope: parsed.data.envelope,
       items: parsed.data.items,
+      deleted: parsed.data.deleted ?? [],
       revision: parsed.data.revision,
       updatedAt: Date.now(),
     };
@@ -92,8 +106,17 @@ export async function DELETE(request: Request) {
     });
     if (!limit.allowed) return rateLimited(limit.retryAfterSeconds);
 
-    await getKv().delete(vaultKey(accountId));
-    return json({ ok: true }, 200);
+    // Deleting the vault deletes the passkeys with it. Each sealed record
+    // holds a copy of the root key and the auth secret, and `lookup` serves
+    // them to anyone with the credential id — so leaving them behind would
+    // mean "delete my vault" quietly kept the keys to it on the server.
+    const kv = getKv();
+    const index = (await kv.get<PasskeySummary[]>(passkeyIndexKey(accountId))) ?? [];
+    for (const entry of index) await kv.delete(passkeyKey(entry.hash));
+    await kv.delete(passkeyIndexKey(accountId));
+    await kv.delete(vaultKey(accountId));
+
+    return json({ ok: true, passkeysRemoved: index.length }, 200);
   } catch (error) {
     return handleError("vault", error);
   }

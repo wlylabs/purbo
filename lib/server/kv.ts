@@ -2,8 +2,10 @@ import "server-only";
 
 import { Redis } from "@upstash/redis";
 
-import { sha256, toHex, utf8Encode } from "@/lib/crypto/primitives";
+import { credentialHash } from "@/lib/auth/credential";
 import { isRemoteStorageConfigured, serverEnv } from "./env";
+
+export { credentialHash };
 
 /**
  * Storage for encrypted vault blobs.
@@ -16,6 +18,25 @@ import { isRemoteStorageConfigured, serverEnv } from "./env";
  * every user's vault on the next serverless cold start would be far worse
  * than failing loudly at deploy time.
  */
+
+/**
+ * Raised when production has no storage configured.
+ *
+ * A class rather than a message: the response layer has to recognise this to
+ * answer 503 instead of 500, and recognising it by matching on the text of an
+ * exception is a coupling that breaks silently the first time the wording is
+ * improved.
+ */
+export class StorageConfigurationError extends Error {
+  constructor() {
+    super(
+      "No vault storage configured. Set UPSTASH_REDIS_REST_URL and " +
+        "UPSTASH_REDIS_REST_TOKEN (or the KV_REST_API_* equivalents) " +
+        "before deploying.",
+    );
+    this.name = "StorageConfigurationError";
+  }
+}
 
 export interface KvDriver {
   get<T>(key: string): Promise<T | null>;
@@ -119,13 +140,7 @@ export function getKv(): KvDriver {
   if (isRemoteStorageConfigured()) {
     cached = createRedisDriver();
   } else {
-    if (serverEnv.isProduction) {
-      throw new Error(
-        "No vault storage configured. Set UPSTASH_REDIS_REST_URL and " +
-          "UPSTASH_REDIS_REST_TOKEN (or the KV_REST_API_* equivalents) " +
-          "before deploying.",
-      );
-    }
+    if (serverEnv.isProduction) throw new StorageConfigurationError();
     cached = createMemoryDriver();
   }
 
@@ -139,16 +154,6 @@ export function vaultKey(accountId: string): string {
 /** A pending login nonce. Short-lived and single-use. */
 export function nonceKey(nonce: string): string {
   return `purbo:nonce:${nonce}`;
-}
-
-/**
- * The storage key for a credential id.
- *
- * Hashed rather than raw so the key space cannot be walked back into the
- * credential ids a user's devices would present.
- */
-export async function credentialHash(credentialId: string): Promise<string> {
-  return toHex(await sha256(utf8Encode(`purbo:cred:v1:${credentialId}`)));
 }
 
 /** A passkey bootstrap record, keyed by the hash above. */

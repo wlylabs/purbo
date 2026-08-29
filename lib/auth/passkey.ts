@@ -25,7 +25,8 @@
  * but not a secret, which is exactly why the record it points at is sealed.
  */
 
-import { open, importAesKey, seal } from "@/lib/crypto/aead";
+import { credentialHash } from "@/lib/auth/credential";
+import { open, importAesKey, seal, sealJson, openJson, type SealedBox } from "@/lib/crypto/aead";
 import { hkdf } from "@/lib/crypto/kdf";
 import {
   fromBase64Url,
@@ -116,6 +117,52 @@ function recordAad(accountId: string, credentialId: string): string {
   return `purbo:passkey:v1:${accountId}:${credentialId}`;
 }
 
+/**
+ * AAD for a device name.
+ *
+ * Bound to the passkey it names rather than only to the account, so a label
+ * cannot be moved from one row to another — the name of the phone you are
+ * about to revoke has to be the name of the phone you are about to revoke.
+ */
+function labelAad(accountId: string, hash: string): string {
+  return `purbo:passkey-label:v1:${accountId}:${hash}`;
+}
+
+/** A device name, sealed for storage beside its record. */
+export async function sealPasskeyLabel(
+  dataKey: CryptoKey,
+  accountId: string,
+  hash: string,
+  label: string,
+): Promise<SealedBox> {
+  return sealJson(dataKey, label, labelAad(accountId, hash));
+}
+
+/**
+ * Reads a device name back, or null.
+ *
+ * Null is an ordinary answer, not an error: a passkey registered before names
+ * existed simply has none, and a row whose label will not open is a row the
+ * user should still be able to see and revoke.
+ */
+export async function openPasskeyLabel(
+  dataKey: CryptoKey,
+  accountId: string,
+  summary: PasskeySummary,
+): Promise<string | null> {
+  if (!summary.label) return null;
+  try {
+    const label = await openJson<string>(
+      dataKey,
+      summary.label,
+      labelAad(accountId, summary.hash),
+    );
+    return typeof label === "string" && label.length > 0 ? label : null;
+  } catch {
+    return null;
+  }
+}
+
 /** What the sealed half of a passkey record contains. */
 interface SealedMaterial {
   root: string;
@@ -163,6 +210,8 @@ async function whilePrompting<T>(fn: () => Promise<T>): Promise<T> {
 export async function registerPasskey(
   accountId: string,
   material: RootMaterial,
+  /** The vault's data key and what to call this device, both optional. */
+  naming?: { dataKey: CryptoKey; label: string },
 ): Promise<void> {
   if (!isPasskeySupported()) throw new PasskeyUnsupportedError();
 
@@ -236,6 +285,16 @@ export async function registerPasskey(
     recordAad(accountId, credentialId),
   );
 
+  const label =
+    naming && naming.label.trim().length > 0
+      ? await sealPasskeyLabel(
+          naming.dataKey,
+          accountId,
+          await credentialHash(credentialId),
+          naming.label.trim(),
+        )
+      : undefined;
+
   const response = await fetch("/api/auth/passkey", {
     method: "PUT",
     headers: {
@@ -246,6 +305,7 @@ export async function registerPasskey(
       credentialId,
       rootSalt: toBase64Url(material.rootSalt),
       sealed,
+      ...(label ? { label } : {}),
     }),
     cache: "no-store",
     credentials: "omit",
@@ -254,10 +314,18 @@ export async function registerPasskey(
   if (!response.ok) {
     throw new Error(
       response.status === 409
-        ? "This account already has the maximum number of passkeys."
+        ? await conflictMessage(response)
         : `Could not save the passkey (${response.status}).`,
     );
   }
+}
+
+/** Tells the two 409s apart, which mean very different things to a user. */
+async function conflictMessage(response: Response): Promise<string> {
+  const body = (await response.json().catch(() => ({}))) as { error?: string };
+  return body.error === "credential_in_use"
+    ? "That passkey is already registered to a different vault."
+    : "This account already has the maximum number of passkeys.";
 }
 
 async function assertPrf(
@@ -362,13 +430,31 @@ export async function listPasskeys(): Promise<PasskeySummary[]> {
 
 /** Revokes every passkey on the account. */
 export async function removeAllPasskeys(): Promise<void> {
-  const response = await fetch("/api/auth/passkey", {
+  await revoke("/api/auth/passkey");
+}
+
+/**
+ * Revokes one passkey, named by the hash the listing gave.
+ *
+ * This is the everyday case the all-or-nothing version could not serve: a
+ * phone that was lost, replaced, or sold. The others keep working, so nobody
+ * has to re-register three devices to retire a fourth.
+ */
+export async function removePasskey(hash: string): Promise<void> {
+  await revoke(`/api/auth/passkey?hash=${encodeURIComponent(hash)}`);
+}
+
+async function revoke(url: string): Promise<void> {
+  const response = await fetch(url, {
     method: "DELETE",
     headers: { authorization: `Bearer ${await getSessionToken()}` },
     cache: "no-store",
     credentials: "omit",
   });
-  if (!response.ok) throw new Error(`Could not remove passkeys (${response.status}).`);
+  // A passkey that is already gone is the outcome the caller asked for.
+  if (!response.ok && response.status !== 404) {
+    throw new Error(`Could not remove passkeys (${response.status}).`);
+  }
 }
 
 function fromHex(value: string): Uint8Array {

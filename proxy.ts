@@ -27,7 +27,12 @@ function buildCsp(nonce: string, isDev: boolean): string {
     // Next injects style tags without a nonce; script injection is the real
     // threat here, and CSS-only injection cannot read the vault.
     "style-src": ["'self'", "'unsafe-inline'"],
-    "img-src": ["'self'", "data:", "blob:", "https:"],
+    // No third-party image is ever loaded, so no third-party origin belongs
+    // here. It matters more than it looks: `style-src` allows inline CSS, and
+    // an HTML injection that cannot run script can still exfiltrate a field
+    // character by character through attribute selectors and a background
+    // image pointed at an attacker. With no remote host reachable, it cannot.
+    "img-src": ["'self'", "data:", "blob:"],
     "font-src": ["'self'", "data:"],
     // Purbo talks to exactly one host: itself. With no identity provider,
     // no analytics and no CDN, every third-party origin can simply be absent

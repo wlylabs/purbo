@@ -328,7 +328,9 @@ function PasskeyOffer({
     setBusy(true);
     setError(null);
     try {
-      await addPasskey(passphrase);
+      // Named, so Settings shows a row that can be told apart later rather
+      // than an anonymous one nobody dares revoke.
+      await addPasskey(passphrase, "This device");
       onDone();
     } catch (err) {
       if (err instanceof PasskeyCancelledError) {
