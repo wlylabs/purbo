@@ -41,15 +41,39 @@ export function ThemeToggle({ className }: { className?: string }) {
     { value: "system", icon: Monitor, label: "System" },
   ];
 
+  const selected = options.findIndex((option) => option.value === theme);
+
   return (
     <div
       role="radiogroup"
       aria-label="Colour theme"
       className={cn(
-        "inline-flex items-center gap-0.5 rounded-full border border-line-control bg-elevated p-0.5",
+        "relative inline-flex items-center gap-0.5 rounded-full border border-line-control bg-elevated p-0.5",
         className,
       )}
     >
+      {/*
+        One disc that moves, rather than three that recolour.
+        Two buttons swapping fills is read as two separate events; a single
+        mark travelling between them is read as the choice moving, which is
+        what actually happened. The offset is arithmetic rather than measured
+        because every option here is the same fixed size — 1.75rem of button
+        plus the 0.125rem gap — so there is nothing a `ResizeObserver` would
+        find that this does not already know.
+
+        Hidden until the stored choice is known, so it never has to slide in
+        from "light" on the first frame after hydration.
+      */}
+      <span
+        aria-hidden
+        className={cn(
+          "pointer-events-none absolute left-0.5 top-0.5 size-7 rounded-full bg-invert-bg",
+          mounted && selected >= 0 ? "opacity-100" : "opacity-0",
+          "transition-[transform,opacity] duration-[250ms] ease-[cubic-bezier(0.16,1,0.3,1)]",
+        )}
+        style={{ transform: `translateX(calc(${Math.max(selected, 0)} * 1.875rem))` }}
+      />
+
       {options.map(({ value, icon: Icon, label }) => (
         <button
           key={value}
@@ -61,9 +85,11 @@ export function ThemeToggle({ className }: { className?: string }) {
           aria-label={label}
           onClick={() => choose(value)}
           className={cn(
-            "grid place-items-center size-7 rounded-full interactive",
+            "relative z-10 grid size-7 place-items-center rounded-full interactive",
             mounted && theme === value
-              ? "bg-invert-bg text-invert-fg active:bg-invert-active"
+              ? // The disc behind it is already the pressed state; a tint on
+                // top would only muddy it. Same reasoning as `<Segmented>`.
+                "text-invert-fg"
               : "text-ink-subtle hover:text-ink active:bg-tint-strong",
           )}
         >

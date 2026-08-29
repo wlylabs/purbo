@@ -72,7 +72,10 @@ export function ApprovalCard({
       role="group"
       aria-label={question}
       className={cn(
-        "animate-in-up overflow-hidden rounded-[var(--radius)] border",
+        // No entrance of its own: every caller raises this inside a `<Reveal>`,
+        // which already animates it in and — unlike an entry keyframe — can
+        // animate it back out again when the question is answered.
+        "overflow-hidden rounded-[var(--radius)] border",
         accents.shell,
         className,
       )}

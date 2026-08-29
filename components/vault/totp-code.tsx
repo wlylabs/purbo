@@ -10,6 +10,7 @@ import {
   secondsRemaining,
   type TotpConfig,
 } from "@/lib/crypto/totp";
+import { Reveal } from "@/components/ui/primitives";
 import { cn } from "@/lib/utils";
 
 /**
@@ -144,28 +145,29 @@ export function TotpCode({
           )}
         >
           {copied ? (
-            <Check className="size-4 text-positive" aria-hidden />
+            <Check className="animate-pop size-4 text-positive" aria-hidden />
           ) : (
             <Copy className="size-4" aria-hidden />
           )}
         </button>
       </div>
 
-      {failed ? (
+      <Reveal open={failed}>
         <p
           role="status"
-          className="animate-fade border-t border-line px-3 py-1.5 text-[0.6875rem] text-critical"
+          className="border-t border-line px-3 py-1.5 text-[0.6875rem] text-critical"
         >
           Clipboard access was blocked by the browser.
         </p>
-      ) : copied ? (
+      </Reveal>
+      <Reveal open={!failed && copied}>
         <p
           role="status"
-          className="animate-fade border-t border-line px-3 py-1.5 text-[0.6875rem] text-ink-subtle"
+          className="border-t border-line px-3 py-1.5 text-[0.6875rem] text-ink-subtle"
         >
           Copied — the clipboard clears itself in 30 seconds.
         </p>
-      ) : null}
+      </Reveal>
     </div>
   );
 }

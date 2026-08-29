@@ -113,7 +113,7 @@ export function PassphraseFields({
           {suggested ? (
             <Button type="button" variant="ghost" size="sm" onClick={copy} disabled={disabled}>
               {copied ? (
-                <Check className="size-3.5 text-positive" aria-hidden />
+                <Check className="animate-pop size-3.5 text-positive" aria-hidden />
               ) : (
                 <Copy className="size-3.5" aria-hidden />
               )}

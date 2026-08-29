@@ -3,6 +3,7 @@
 import { Check, Copy, Eye, EyeOff } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { Reveal } from "./primitives";
 import { cn, copyWithAutoClear } from "@/lib/utils";
 
 /**
@@ -73,9 +74,14 @@ export function CopyRow({
       <div className="flex items-start gap-2 px-3 py-2.5">
         <div className="min-w-0 flex-1">
           <p className="text-label">{label}</p>
+          {/* Keyed on whether it is masked, so the eye swaps one value for
+              the other through a fade rather than between two frames — at a
+              glance the dots and the password are the same shape, and a hard
+              cut leaves it unclear which one is on screen. */}
           <p
+            key={masked ? "masked" : "revealed"}
             className={cn(
-              "mt-1 break-all text-[0.9375rem] leading-snug",
+              "animate-fade mt-1 break-all text-[0.9375rem] leading-snug",
               (secret || mono) && "font-mono tracking-tight",
               masked && "select-none text-ink-muted",
             )}
@@ -99,7 +105,7 @@ export function CopyRow({
           ) : null}
           <RowAction onClick={copy} label={`Copy ${label}`}>
             {copied ? (
-              <Check className="size-4 text-positive" aria-hidden />
+              <Check className="animate-pop size-4 text-positive" aria-hidden />
             ) : (
               <Copy className="size-4" aria-hidden />
             )}
@@ -108,24 +114,31 @@ export function CopyRow({
       </div>
 
       {/* Feedback replaces nothing above it, so the row grows rather than
-          swapping content the user was mid-read of. */}
-      {failed ? (
+          swapping content the user was mid-read of — and it grows at a rate,
+          because a line of text that appears and vanishes between frames is
+          the kind of thing people miss and then re-click to check.
+
+          Two reveals rather than one with a ternary inside: each holds its own
+          fixed wording, so the line still reads correctly on the way out,
+          after the state that chose it has already been cleared. */}
+      <Reveal open={failed}>
         <p
           role="status"
-          className="animate-fade border-t border-line px-3 py-1.5 text-[0.6875rem] text-critical"
+          className="border-t border-line px-3 py-1.5 text-[0.6875rem] text-critical"
         >
           Clipboard access was blocked by the browser.
         </p>
-      ) : copied ? (
+      </Reveal>
+      <Reveal open={!failed && copied}>
         <p
           role="status"
-          className="animate-fade border-t border-line px-3 py-1.5 text-[0.6875rem] text-ink-subtle"
+          className="border-t border-line px-3 py-1.5 text-[0.6875rem] text-ink-subtle"
         >
           {secret
             ? "Copied — the clipboard clears itself in 30 seconds."
             : "Copied to the clipboard."}
         </p>
-      ) : null}
+      </Reveal>
     </div>
   );
 }

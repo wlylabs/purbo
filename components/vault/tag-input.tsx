@@ -67,7 +67,10 @@ export function TagInput({
         {value.map((tag) => (
           <span
             key={tag}
-            className="inline-flex items-center gap-1 rounded-full border border-line bg-surface py-0.5 pl-2.5 pr-1 text-[0.75rem] font-medium"
+            // Keyed on the tag, so only a chip that is actually new plays the
+            // entrance: committing one is a click whose whole result is a
+            // small shape appearing beside the caret, easy to miss otherwise.
+            className="animate-pop inline-flex items-center gap-1 rounded-full border border-line bg-surface py-0.5 pl-2.5 pr-1 text-[0.75rem] font-medium"
           >
             {tag}
             <button

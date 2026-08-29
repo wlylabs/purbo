@@ -8,6 +8,7 @@ import { VaultLink } from "@/components/vault-link";
 import { ThemeToggle } from "@/components/theme";
 import { Wordmark } from "@/components/logo";
 import { Button } from "@/components/ui/button";
+import { Reveal } from "@/components/ui/primitives";
 import { cn } from "@/lib/utils";
 
 const LINKS = [
@@ -80,26 +81,27 @@ export function Nav() {
         </div>
       </div>
 
-      {menuOpen ? (
-        <div className="md:hidden border-t border-line bg-canvas animate-fade">
-          <nav aria-label="Mobile" className="mx-auto max-w-6xl px-5 py-4 space-y-1">
-            {LINKS.map((link) => (
-              <a
-                key={link.href}
-                href={link.href}
-                onClick={() => setMenuOpen(false)}
-                className="block rounded-[var(--radius-sm)] px-3 py-2.5 text-sm text-ink-muted interactive hover:bg-tint hover:text-ink active:bg-tint-strong"
-              >
-                {link.label}
-              </a>
-            ))}
-            <div className="flex items-center justify-between gap-3 pt-3">
-              <ThemeToggle />
-              <VaultLink size="sm" className="flex-1" />
-            </div>
-          </nav>
-        </div>
-      ) : null}
+      {/* The panel folds down out of the bar and folds back up, so tapping
+          the same button twice is one gesture reversed rather than a page
+          that grows and then blinks. */}
+      <Reveal open={menuOpen} className="md:hidden border-t border-line bg-canvas">
+        <nav aria-label="Mobile" className="mx-auto max-w-6xl space-y-1 px-5 py-4">
+          {LINKS.map((link) => (
+            <a
+              key={link.href}
+              href={link.href}
+              onClick={() => setMenuOpen(false)}
+              className="block rounded-[var(--radius-sm)] px-3 py-2.5 text-sm text-ink-muted interactive hover:bg-tint hover:text-ink active:bg-tint-strong"
+            >
+              {link.label}
+            </a>
+          ))}
+          <div className="flex items-center justify-between gap-3 pt-3">
+            <ThemeToggle />
+            <VaultLink size="sm" className="flex-1" />
+          </div>
+        </nav>
+      </Reveal>
     </header>
   );
 }

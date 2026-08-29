@@ -1,7 +1,7 @@
 "use client";
 
 import { X } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "./button";
@@ -161,6 +161,103 @@ export function Separator({ className }: { className?: string }) {
 }
 
 /**
+ * Content a click adds to the page, arriving and leaving at the same rate.
+ *
+ * The obvious way to write one of these is `{open ? <Panel /> : null}`, and it
+ * is what most of this app used to do. It cannot animate a dismissal: the
+ * moment the flag flips the node is gone, so "cancel" is a jump-cut and the
+ * page below it lurches up to fill the hole. This keeps the children mounted
+ * for exactly as long as the closing transition needs and then drops them,
+ * which is what makes the two halves of the interaction match.
+ *
+ * Mounting on open rather than rendering hidden is deliberate. Panels here are
+ * forms — a typed confirmation word, a staged import — and their reset-on-mount
+ * behaviour is load-bearing: a permanently mounted panel would hand the next
+ * caller the last one's half-finished state.
+ */
+export function Reveal({
+  open,
+  children,
+  className,
+}: {
+  open: boolean;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  // Mounted-ness, which outlives `open` by the length of the close.
+  const [present, setPresent] = useState(open);
+  // The animated state, which lags `open` by a frame on the way in so the
+  // grid has a collapsed row to travel from rather than starting at its
+  // final height.
+  const [expanded, setExpanded] = useState(open);
+  /*
+   * Whether the opening has finished.
+   *
+   * While the panel is moving its content has to be clipped to the row, or it
+   * hangs out of a box that has not grown to hold it yet. Once it has arrived
+   * the clip has to go: it would otherwise cut the focus ring off anything at
+   * the panel's edge — and the first thing inside one of these is usually a
+   * button or a field, which is exactly what gets focused.
+   */
+  const [settled, setSettled] = useState(open);
+
+  useEffect(() => {
+    if (!open) {
+      setExpanded(false);
+      setSettled(false);
+      return;
+    }
+
+    setPresent(true);
+
+    /*
+     * Two frames, not one.
+     *
+     * A click is a discrete event, so React flushes this effect and the
+     * re-render it schedules before the browser paints. One `rAF` lands in
+     * that same frame: the collapsed row is mounted and expanded again
+     * without ever having been painted, the browser sees a single computed
+     * style, and there is no transition to run — the panel snaps open and,
+     * with no `transitionend` to follow, never reports itself settled either.
+     * Waiting for the second frame is what guarantees `0fr` was actually
+     * rendered to travel from.
+     */
+    let inner = 0;
+    const outer = requestAnimationFrame(() => {
+      inner = requestAnimationFrame(() => setExpanded(true));
+    });
+    return () => {
+      cancelAnimationFrame(outer);
+      cancelAnimationFrame(inner);
+    };
+  }, [open]);
+
+  if (!present) return null;
+
+  return (
+    <div
+      className={cn("reveal", className)}
+      data-open={expanded}
+      data-settled={settled}
+      // Focus must not stay inside something that is on its way out — and
+      // this is the closing half only, so an autofocus on open still lands.
+      inert={!open}
+      onTransitionEnd={(event) => {
+        // Transitions from the panel's own contents bubble through here; only
+        // the row itself finishing means the panel has arrived or gone.
+        if (event.target !== event.currentTarget) return;
+        if (event.propertyName !== "grid-template-rows") return;
+        if (open) setSettled(true);
+        else setPresent(false);
+      }}
+    >
+      <div>{children}</div>
+    </div>
+  );
+}
+
+
+/**
  * Modal dialog built on <dialog>, so focus trapping, Escape handling and
  * inertness of the background come from the platform rather than from a
  * hand-rolled keydown listener that will eventually get one of them wrong.
@@ -223,8 +320,10 @@ export function Modal({
       }}
       className={cn(
         "m-auto w-[calc(100vw-2rem)] max-w-lg bg-transparent p-0 text-ink",
-        "backdrop:bg-overlay backdrop:backdrop-blur-[2px]",
-        "open:animate-in-up",
+        // Opens and closes with the same motion, backdrop included. See the
+        // class in `app/globals.css` for why the exit needs CSS rather than a
+        // `close()` the moment the flag flips.
+        "dialog-reveal",
       )}
     >
       <div

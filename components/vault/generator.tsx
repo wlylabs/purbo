@@ -150,7 +150,7 @@ export function Generator({
           </Button>
           <Button variant="secondary" size="sm" onClick={copy} className="flex-1">
             {copied ? (
-              <Check className="size-3.5 text-positive" aria-hidden />
+              <Check className="animate-pop size-3.5 text-positive" aria-hidden />
             ) : (
               <Copy className="size-3.5" aria-hidden />
             )}
@@ -165,8 +165,11 @@ export function Generator({
 
         {error ? <p className="text-xs text-critical">{error}</p> : null}
 
+        {/* Keyed on the mode: the settings are a different set of controls,
+            not the same ones with different labels, so they arrive rather
+            than mutate in place — the same reasoning as the output above. */}
         {mode === "password" ? (
-          <div className="space-y-4 border-t border-line pt-5">
+          <div key="password" className="animate-fade space-y-4 border-t border-line pt-5">
             <div>
               <div className="flex items-baseline justify-between">
                 <label htmlFor="gen-length" className="text-[0.8125rem] font-medium">
@@ -219,7 +222,7 @@ export function Generator({
             </label>
           </div>
         ) : (
-          <div className="border-t border-line pt-5">
+          <div key="passphrase" className="animate-fade border-t border-line pt-5">
             <div className="flex items-baseline justify-between">
               <label htmlFor="gen-words" className="text-[0.8125rem] font-medium">
                 Words

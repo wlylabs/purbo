@@ -447,6 +447,160 @@
       opacity var(--panel-open-dur) var(--panel-ease),
       filter var(--panel-open-dur) var(--panel-ease);
   }
+
+  /*
+   * In-flow disclosure: content that a click adds to the page rather than
+   * floating over it — a confirmation, a generator panel, a staged import.
+   *
+   * The grid is what makes this possible without measuring anything. A row
+   * sized `0fr` collapses its content to nothing and `1fr` gives it exactly
+   * the height it asks for, and unlike `height: auto` those two are
+   * interpolable — so the page opens and closes at the same rate whatever is
+   * inside, with no `scrollHeight` read and no layout thrash.
+   *
+   * Closing is quicker than opening, the same asymmetry `.panel-reveal` uses:
+   * arriving content is worth watching, dismissed content is not.
+   *
+   * `<Reveal>` in `components/ui/primitives.tsx` drives `data-open` and holds
+   * the children mounted until the close has finished — the class alone
+   * cannot, because a caller that unmounts on the same tick has nothing left
+   * to animate.
+   */
+  .reveal {
+    --reveal-open-dur: 320ms;
+    --reveal-close-dur: 240ms;
+    --reveal-ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+    display: grid;
+    grid-template-rows: 0fr;
+    opacity: 0;
+    transition:
+      grid-template-rows var(--reveal-close-dur) var(--reveal-ease),
+      opacity calc(var(--reveal-close-dur) * 0.7) var(--reveal-ease);
+  }
+  .reveal[data-open="true"] {
+    grid-template-rows: 1fr;
+    opacity: 1;
+    transition:
+      grid-template-rows var(--reveal-open-dur) var(--reveal-ease),
+      opacity var(--reveal-open-dur) var(--reveal-ease);
+  }
+  /* The row itself has to be allowed to be smaller than its content, or the
+     grid refuses to collapse and `0fr` measures the same as `1fr`. The clip
+     is lifted once the panel has arrived — see `settled` in `<Reveal>` — so
+     that a focus ring on the first control inside is not shaved off. */
+  .reveal > * {
+    min-height: 0;
+    overflow: hidden;
+  }
+  .reveal[data-settled="true"] > * {
+    overflow: visible;
+  }
+
+  /*
+   * A modal that leaves the way it arrived.
+   *
+   * `<dialog>` is `display: none` when closed, so a transition off it needs
+   * `allow-discrete` on `display` and `overlay` — the first keeps the box
+   * rendered for the length of the animation, the second keeps it in the top
+   * layer while that happens. Without the second the panel drops behind its
+   * own backdrop for the exit and the whole thing reads as a glitch.
+   *
+   * `@starting-style` supplies the entry values. A browser that has neither
+   * lands on the resting state immediately, which is the behaviour this
+   * replaces — so there is nothing to feature-detect.
+   */
+  .dialog-reveal {
+    --dialog-open-dur: 260ms;
+    --dialog-close-dur: 200ms;
+    --dialog-ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+    opacity: 0;
+    transform: translateY(8px) scale(0.99);
+    transition:
+      opacity var(--dialog-close-dur) var(--dialog-ease),
+      transform var(--dialog-close-dur) var(--dialog-ease),
+      overlay var(--dialog-close-dur) allow-discrete,
+      display var(--dialog-close-dur) allow-discrete;
+  }
+  .dialog-reveal[open] {
+    opacity: 1;
+    transform: none;
+    transition:
+      opacity var(--dialog-open-dur) var(--dialog-ease),
+      transform var(--dialog-open-dur) var(--dialog-ease),
+      overlay var(--dialog-open-dur) allow-discrete,
+      display var(--dialog-open-dur) allow-discrete;
+  }
+  @starting-style {
+    .dialog-reveal[open] {
+      opacity: 0;
+      transform: translateY(8px) scale(0.99);
+    }
+  }
+
+  /* The backdrop is part of the same gesture, so it is timed with the panel
+     rather than snapping on ahead of it. Written here rather than as
+     `backdrop:` utilities at the call site because the entry values have to
+     be stated in `@starting-style`, which a utility cannot reach. */
+  .dialog-reveal::backdrop {
+    background-color: rgb(0 0 0 / 0);
+    -webkit-backdrop-filter: blur(0px);
+    backdrop-filter: blur(0px);
+    transition:
+      background-color var(--dialog-close-dur) var(--dialog-ease),
+      -webkit-backdrop-filter var(--dialog-close-dur) var(--dialog-ease),
+      backdrop-filter var(--dialog-close-dur) var(--dialog-ease),
+      overlay var(--dialog-close-dur) allow-discrete,
+      display var(--dialog-close-dur) allow-discrete;
+  }
+  .dialog-reveal[open]::backdrop {
+    background-color: var(--overlay);
+    -webkit-backdrop-filter: blur(2px);
+    backdrop-filter: blur(2px);
+    transition:
+      background-color var(--dialog-open-dur) var(--dialog-ease),
+      -webkit-backdrop-filter var(--dialog-open-dur) var(--dialog-ease),
+      backdrop-filter var(--dialog-open-dur) var(--dialog-ease),
+      overlay var(--dialog-open-dur) allow-discrete,
+      display var(--dialog-open-dur) allow-discrete;
+  }
+  @starting-style {
+    .dialog-reveal[open]::backdrop {
+      background-color: rgb(0 0 0 / 0);
+      -webkit-backdrop-filter: blur(0px);
+      backdrop-filter: blur(0px);
+    }
+  }
+
+  /*
+   * A native `<details>` that opens at a rate rather than in a jump.
+   *
+   * `interpolate-size` is what makes `block-size: auto` a value a transition
+   * can travel to, and it is set here rather than on `:root` so it stays a
+   * property of this component instead of quietly changing what every other
+   * `auto` in the app does. `content-visibility` has to go discrete alongside
+   * it, or the browser un-hides the content on the first frame of the close
+   * and the body vanishes before the box has finished shrinking.
+   *
+   * Browsers without `::details-content` open the way they always have.
+   */
+  .disclosure {
+    interpolate-size: allow-keywords;
+  }
+  .disclosure::details-content {
+    block-size: 0;
+    overflow: hidden;
+    opacity: 0;
+    transition:
+      block-size 280ms cubic-bezier(0.22, 1, 0.36, 1),
+      opacity 200ms cubic-bezier(0.22, 1, 0.36, 1),
+      content-visibility 280ms allow-discrete;
+  }
+  .disclosure[open]::details-content {
+    block-size: auto;
+    opacity: 1;
+  }
 }
 
 @layer utilities {
@@ -483,6 +637,27 @@
     }
   }
 
+  /*
+   * The way back out for something that arrived on `in-up`: it leaves the way
+   * it came rather than being deleted mid-sentence. Quicker than the entrance
+   * and on an accelerating curve, because a dismissal should read as gone
+   * rather than as departing.
+   */
+  .animate-out-down {
+    animation: out-down 0.2s cubic-bezier(0.4, 0, 1, 1) both;
+  }
+
+  @keyframes out-down {
+    from {
+      opacity: 1;
+      transform: none;
+    }
+    to {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+  }
+
   .animate-fade {
     animation: fade 0.2s ease-out both;
   }
@@ -493,6 +668,30 @@
     }
     to {
       opacity: 1;
+    }
+  }
+
+  /*
+   * The answer to a click landing on an icon: the confirming glyph grows into
+   * place instead of replacing the old one between two frames.
+   *
+   * A check that simply appears is indistinguishable from a check that was
+   * always there, which is the whole problem with a silent copy button. There
+   * is no overshoot — a bounce would be the moulded-key idiom this system does
+   * without, just relocated to an icon.
+   */
+  .animate-pop {
+    animation: pop 0.24s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  @keyframes pop {
+    from {
+      opacity: 0;
+      transform: scale(0.7);
+    }
+    to {
+      opacity: 1;
+      transform: none;
     }
   }
 
