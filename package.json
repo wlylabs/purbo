@@ -8,7 +8,6 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "icons": "node scripts/generate-icons.mjs",
     "screenshots": "node scripts/generate-screenshots.mjs",
