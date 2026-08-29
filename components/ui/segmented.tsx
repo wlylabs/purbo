@@ -94,8 +94,8 @@ export function Segmented<T extends string>({
     return () => observer.disconnect();
   }, [value, itemKey]);
 
-  const move = (delta: number) => {
-    const next = items[(activeIndex + delta + items.length) % items.length];
+  const select = (index: number) => {
+    const next = items[(index + items.length) % items.length];
     if (!next) return;
     onChange(next.id);
     // Follow the selection with focus, which is what a roving tablist does.
@@ -103,6 +103,8 @@ export function Segmented<T extends string>({
       ?.querySelector<HTMLButtonElement>(`#${CSS.escape(segmentedIds(name, next.id).tabId)}`)
       ?.focus();
   };
+
+  const move = (delta: number) => select(activeIndex + delta);
 
   return (
     <div
@@ -116,6 +118,14 @@ export function Segmented<T extends string>({
         } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
           event.preventDefault();
           move(-1);
+        } else if (event.key === "Home") {
+          // Both ends of the strip in one press, which is the rest of what a
+          // tablist's keyboard contract covers once the arrows are in place.
+          event.preventDefault();
+          select(0);
+        } else if (event.key === "End") {
+          event.preventDefault();
+          select(items.length - 1);
         }
       }}
       className={cn(

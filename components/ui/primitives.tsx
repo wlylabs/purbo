@@ -1,7 +1,7 @@
 "use client";
 
 import { X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "./button";
@@ -278,6 +278,16 @@ export function Modal({
   className?: string;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
+  /*
+   * Generated rather than a fixed string.
+   *
+   * A constant id is a promise there is only ever one of these on the page,
+   * and nothing enforces it: two modals mounted at once — one closing while
+   * the next opens — leave two elements answering to the same name, and
+   * `aria-labelledby` resolves to whichever the document happens to hold
+   * first. That is a dialog announced with another dialog's title.
+   */
+  const id = useId();
 
   useEffect(() => {
     const dialog = ref.current;
@@ -312,7 +322,11 @@ export function Modal({
   return (
     <dialog
       ref={ref}
-      aria-labelledby="modal-title"
+      aria-labelledby={`${id}-title`}
+      // The description says what the dialog is for — "encrypted in this
+      // browser before it is saved" — which is context for the whole panel
+      // rather than for the first field in it, so it belongs here.
+      aria-describedby={description ? `${id}-description` : undefined}
       onClick={(event) => {
         // Clicks land on the backdrop only when the target is the dialog
         // element itself; anything inside the panel stops here.
@@ -337,11 +351,16 @@ export function Modal({
             entry is still on screen when the delete control is reached. */}
         <header className="flex items-start justify-between gap-4 px-5 py-4 border-b border-line shrink-0 bg-elevated">
           <div className="space-y-1">
-            <h2 id="modal-title" className="text-[0.9375rem] font-semibold tracking-tight">
+            <h2 id={`${id}-title`} className="text-[0.9375rem] font-semibold tracking-tight">
               {title}
             </h2>
             {description ? (
-              <p className="text-[0.8125rem] text-ink-muted leading-relaxed">{description}</p>
+              <p
+                id={`${id}-description`}
+                className="text-[0.8125rem] text-ink-muted leading-relaxed"
+              >
+                {description}
+              </p>
             ) : null}
           </div>
           <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close dialog">

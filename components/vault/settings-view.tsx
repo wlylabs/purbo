@@ -79,7 +79,6 @@ function PasskeySection() {
       setPassphrase("");
       setAdding(false);
       setAdded(true);
-      window.setTimeout(() => setAdded(false), 4000);
       await refresh();
     } catch (err) {
       if (!(err instanceof PasskeyCancelledError)) {
@@ -89,6 +88,20 @@ function PasskeySection() {
       setBusy(false);
     }
   };
+
+  /*
+   * Settle the confirmation back to the resting label.
+   *
+   * Timed from an effect rather than fired inside the submit handler so it is
+   * cancelled when this card goes away: switching tabs unmounts the whole of
+   * Settings, and a bare `setTimeout` would still be holding a setter for a
+   * component that no longer exists.
+   */
+  useEffect(() => {
+    if (!added) return;
+    const timer = window.setTimeout(() => setAdded(false), 4000);
+    return () => window.clearTimeout(timer);
+  }, [added]);
 
   const count = passkeys?.length ?? 0;
 
@@ -237,6 +250,13 @@ function ChangePassphraseSection() {
     setError(null);
   };
 
+  // Cancelled on unmount, for the same reason as the passkey card above.
+  useEffect(() => {
+    if (!done) return;
+    const timer = window.setTimeout(() => setDone(false), 6000);
+    return () => window.clearTimeout(timer);
+  }, [done]);
+
   const strongEnough = passphraseIsUsable(next, estimateStrength(next).bits);
   const valid =
     current.length > 0 && strongEnough && next === confirmation && next !== current;
@@ -251,7 +271,6 @@ function ChangePassphraseSection() {
       await changePassphrase(current, next);
       reset();
       setDone(true);
-      window.setTimeout(() => setDone(false), 6000);
     } catch (err) {
       setError(
         err instanceof IncorrectPassphraseError
