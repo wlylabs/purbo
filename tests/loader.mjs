@@ -24,6 +24,12 @@ export async function resolve(specifier, context, next) {
     return { shortCircuit: true, url: pathToFileURL(path.join(ROOT, "tests/empty.mjs")).href };
   }
 
+  // Next ships `next/server` as a plain file with no exports map, which the
+  // bundler resolves and bare Node does not.
+  if (spec === "next/server") {
+    return next("next/server.js", context);
+  }
+
   if (spec.startsWith("@/")) {
     spec = pathToFileURL(path.join(ROOT, spec.slice(2))).href;
   }

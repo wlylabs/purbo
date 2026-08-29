@@ -14,14 +14,10 @@ import { InstallSection } from "@/components/pwa/install-prompt";
 import { ThemeToggle } from "@/components/theme";
 import { ApprovalCard } from "@/components/ui/approval";
 import { Button } from "@/components/ui/button";
-import { PasswordInput } from "@/components/ui/input";
+import { Input, PasswordInput } from "@/components/ui/input";
 import { Card, ChipRadioGroup, Notice, Reveal } from "@/components/ui/primitives";
 import { Trace, TraceStep } from "@/components/ui/trace";
-import {
-  PasskeyCancelledError,
-  isPasskeySupported,
-  listPasskeys,
-} from "@/lib/auth/passkey";
+import { PasskeyCancelledError, isPasskeySupported } from "@/lib/auth/passkey";
 import { DEFAULT_KDF_PARAMS } from "@/lib/crypto/kdf";
 import { estimateStrength } from "@/lib/crypto/password";
 import {
@@ -30,8 +26,8 @@ import {
   partitionDuplicates,
 } from "@/lib/vault/import";
 import { IncorrectPassphraseError } from "@/lib/vault/keyring";
-import { useVault } from "@/lib/vault/provider";
-import type { PasskeySummary, VaultItemDraft } from "@/lib/vault/types";
+import { useVault, type PasskeyDevice } from "@/lib/vault/provider";
+import type { VaultItemDraft } from "@/lib/vault/types";
 import { PassphraseFields, passphraseIsUsable } from "./passphrase-fields";
 import { StepUp } from "./step-up";
 
@@ -46,24 +42,25 @@ import { StepUp } from "./step-up";
  * is a login they can reset.
  */
 function PasskeySection() {
-  const { addPasskey, forgetPasskeys } = useVault();
+  const { addPasskey, forgetPasskeys, forgetPasskey, listPasskeyDevices } = useVault();
 
   const [supported, setSupported] = useState(false);
-  const [passkeys, setPasskeys] = useState<PasskeySummary[] | null>(null);
+  const [devices, setDevices] = useState<PasskeyDevice[] | null>(null);
   const [adding, setAdding] = useState(false);
   const [passphrase, setPassphrase] = useState("");
+  const [deviceName, setDeviceName] = useState("");
   const [busy, setBusy] = useState(false);
-  const [removing, setRemoving] = useState(false);
+  const [removing, setRemoving] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [added, setAdded] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
-      setPasskeys(await listPasskeys());
+      setDevices(await listPasskeyDevices());
     } catch {
-      setPasskeys([]);
+      setDevices([]);
     }
-  }, []);
+  }, [listPasskeyDevices]);
 
   useEffect(() => {
     setSupported(isPasskeySupported());
@@ -75,8 +72,9 @@ function PasskeySection() {
     setBusy(true);
     setError(null);
     try {
-      await addPasskey(passphrase);
+      await addPasskey(passphrase, deviceName);
       setPassphrase("");
+      setDeviceName("");
       setAdding(false);
       setAdded(true);
       await refresh();
@@ -86,6 +84,21 @@ function PasskeySection() {
       }
     } finally {
       setBusy(false);
+    }
+  };
+
+  /** Revokes one authenticator, or all of them when given no hash. */
+  const revoke = async (hash: string | null) => {
+    setRemoving(hash ?? "all");
+    setError(null);
+    try {
+      if (hash) await forgetPasskey(hash);
+      else await forgetPasskeys();
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not remove passkeys.");
+    } finally {
+      setRemoving(null);
     }
   };
 
@@ -103,7 +116,7 @@ function PasskeySection() {
     return () => window.clearTimeout(timer);
   }, [added]);
 
-  const count = passkeys?.length ?? 0;
+  const count = devices?.length ?? 0;
 
   return (
     <Card className="p-5 sm:p-6">
@@ -122,13 +135,41 @@ function PasskeySection() {
         </Notice>
       ) : (
         <>
-          <p className="mt-4 text-[0.8125rem] text-ink-muted">
-            {passkeys === null
-              ? "Checking…"
-              : count === 0
-                ? "No passkeys registered."
-                : `${count} passkey${count === 1 ? "" : "s"} registered to this vault.`}
-          </p>
+          {devices === null ? (
+            <p className="mt-4 text-[0.8125rem] text-ink-muted">Checking…</p>
+          ) : count === 0 ? (
+            <p className="mt-4 text-[0.8125rem] text-ink-muted">
+              No passkeys registered.
+            </p>
+          ) : (
+            <ul className="mt-4 divide-y divide-line border-y border-line">
+              {devices.map((device) => (
+                <li
+                  key={device.hash}
+                  className="flex items-center justify-between gap-3 py-2.5"
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate text-[0.8125rem] text-ink">
+                      {device.name ?? "Unnamed passkey"}
+                    </span>
+                    <span className="block text-[0.6875rem] text-ink-subtle">
+                      Added {new Date(device.createdAt).toLocaleDateString()}
+                    </span>
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    loading={removing === device.hash}
+                    disabled={removing !== null}
+                    onClick={() => void revoke(device.hash)}
+                    aria-label={`Remove ${device.name ?? "this passkey"}`}
+                  >
+                    Remove
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
 
           <Reveal open={adding}>
             <form onSubmit={submit} className="mt-4 space-y-4 border-t border-line pt-5">
@@ -136,12 +177,20 @@ function PasskeySection() {
                 Confirm your passphrase. Registering unwraps the root key for exactly as
                 long as it takes to seal a copy under the new passkey.
               </p>
+              <Input
+                label="Device name"
+                hint="Sealed like everything else — the server never reads it. Optional, but it is what lets you revoke one device later."
+                value={deviceName}
+                onChange={(event) => setDeviceName(event.target.value)}
+                maxLength={60}
+                placeholder="Work laptop"
+                autoFocus
+              />
               <PasswordInput
                 label="Passphrase"
                 value={passphrase}
                 onChange={(event) => setPassphrase(event.target.value)}
                 mono={false}
-                autoFocus
                 required
               />
               {error ? (
@@ -158,6 +207,7 @@ function PasskeySection() {
                   onClick={() => {
                     setAdding(false);
                     setPassphrase("");
+                    setDeviceName("");
                     setError(null);
                   }}
                 >
@@ -179,25 +229,13 @@ function PasskeySection() {
                 )}
                 {added ? "Passkey added" : "Add a passkey"}
               </Button>
-              {count > 0 ? (
+              {count > 1 ? (
                 <Button
                   variant="danger"
                   size="sm"
-                  loading={removing}
-                  onClick={async () => {
-                    setRemoving(true);
-                    setError(null);
-                    try {
-                      await forgetPasskeys();
-                      await refresh();
-                    } catch (err) {
-                      setError(
-                        err instanceof Error ? err.message : "Could not remove passkeys.",
-                      );
-                    } finally {
-                      setRemoving(false);
-                    }
-                  }}
+                  loading={removing === "all"}
+                  disabled={removing !== null}
+                  onClick={() => void revoke(null)}
                 >
                   Remove all
                 </Button>
@@ -210,8 +248,8 @@ function PasskeySection() {
 
           {count > 0 ? (
             <p className="mt-3 text-[0.6875rem] leading-relaxed text-ink-subtle">
-              Removing them here deletes the sealed copies from the server. The passkeys
-              themselves stay in your password manager until you delete them there too.
+              Removing one here deletes its sealed copy from the server. The passkey
+              itself stays in your password manager until you delete it there too.
             </p>
           ) : null}
         </>

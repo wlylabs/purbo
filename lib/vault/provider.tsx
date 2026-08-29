@@ -16,8 +16,11 @@ import {
   NoPasskeyRecordError,
   isPasskeyPromptOpen,
   isPasskeySupported,
+  listPasskeys,
+  openPasskeyLabel,
   registerPasskey,
   removeAllPasskeys,
+  removePasskey,
   unlockWithPasskey,
 } from "@/lib/auth/passkey";
 import { wipe } from "@/lib/crypto/primitives";
@@ -58,17 +61,27 @@ import {
   type Keyring,
   type RootMaterial,
 } from "./keyring";
+import { addTombstone, mergeVaults } from "./merge";
 import { applyDraft, decryptAll, draftToItem, encryptItem } from "./records";
 import type {
   EncryptedItem,
   EncryptedVault,
   KeyEnvelope,
+  Tombstone,
   VaultItem,
   VaultItemDraft,
   VaultStatus,
 } from "./types";
 
 export type SyncState = "idle" | "syncing" | "offline" | "error";
+
+/** One registered authenticator, as Settings needs to show it. */
+export interface PasskeyDevice {
+  readonly hash: string;
+  readonly createdAt: number;
+  /** Null for a passkey registered without a name, or one that will not open. */
+  readonly name: string | null;
+}
 
 interface VaultContextValue {
   status: VaultStatus;
@@ -106,9 +119,20 @@ interface VaultContextValue {
   /** Drops this device's copy without touching the server's. */
   forgetDevice(): Promise<void>;
 
-  addPasskey(passphrase: string): Promise<void>;
+  /** Registers a passkey, optionally naming the device it lives on. */
+  addPasskey(passphrase: string, label?: string): Promise<void>;
   /** Revokes every passkey on the account and stops offering that path here. */
   forgetPasskeys(): Promise<void>;
+  /** Revokes one authenticator — the lost phone — leaving the others alone. */
+  forgetPasskey(hash: string): Promise<void>;
+  /**
+   * The registered authenticators, named.
+   *
+   * Decryption happens here rather than in the view because the key that
+   * opens a device name is the vault's data key, and that never leaves this
+   * provider — a component receives text, not a way to decrypt more.
+   */
+  listPasskeyDevices(): Promise<PasskeyDevice[]>;
 
   /**
    * Whether a recent confirmation is still standing.
@@ -173,6 +197,18 @@ const PRIVACY_SCREEN_STORAGE_KEY = "purbo:privacy-screen";
  */
 const STEP_UP_WINDOW_MS = 2 * 60_000;
 
+/**
+ * How often an open vault checks the server on its own.
+ *
+ * Sync used to happen only at unlock and at save, which meant two tabs open
+ * side by side never found out about each other, and a save that failed while
+ * offline waited for the next save to be retried — the status line said
+ * "sync will retry" and nothing ever did. This is what makes that sentence
+ * true. It costs one conditional GET per interval per open tab, well inside
+ * the read limit the API allows.
+ */
+const SYNC_INTERVAL_MS = 2 * 60_000;
+
 /** Activity that counts as "the user is still here". */
 const ACTIVITY_EVENTS = ["mousedown", "keydown", "touchstart", "scroll"] as const;
 
@@ -206,7 +242,26 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
   const keyringRef = useRef<Keyring | null>(null);
   const envelopeRef = useRef<KeyEnvelope | null>(null);
   const encryptedRef = useRef<EncryptedItem[]>([]);
+  const deletedRef = useRef<Tombstone[]>([]);
   const revisionRef = useRef(0);
+  /**
+   * The envelope as the server last agreed it stood.
+   *
+   * A merge can reconcile entries, but an envelope is a single wrapped root
+   * key — one side has to win. Comparing against this says which side has
+   * something to say: if the live envelope is no longer the one that was
+   * synced, this device rotated its passphrase and its copy must not be
+   * reverted by whatever the server still holds.
+   */
+  const syncedEnvelopeRef = useRef<KeyEnvelope | null>(null);
+  /**
+   * Serialises everything that talks to the vault API.
+   *
+   * A save landing in the middle of a background sync would have the two
+   * racing to write the same revision, and the loser would spend a round trip
+   * resolving a conflict it created itself.
+   */
+  const syncChainRef = useRef<Promise<void>>(Promise.resolve());
   /**
    * The in-flight write of this tab's session cache.
    *
@@ -278,7 +333,9 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
       .catch(() => undefined)
       .then(clearSessionKeys);
     envelopeRef.current = null;
+    syncedEnvelopeRef.current = null;
     encryptedRef.current = [];
+    deletedRef.current = [];
     revisionRef.current = 0;
     setItems([]);
     setCorrupted([]);
@@ -295,111 +352,210 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
     setCorrupted(failed);
   }, []);
 
+  /** Writes the current ciphertext to this device, and records the revision. */
+  const writeLocal = useCallback(
+    async (
+      keyring: Keyring,
+      next: {
+        envelope: KeyEnvelope;
+        items: EncryptedItem[];
+        deleted: Tombstone[];
+        revision: number;
+      },
+    ) => {
+      envelopeRef.current = next.envelope;
+      encryptedRef.current = next.items;
+      deletedRef.current = next.deleted;
+      revisionRef.current = next.revision;
+
+      const vault: EncryptedVault = { ...next, updatedAt: Date.now() };
+      await writeLocalVault(keyring.accountId, vault);
+    },
+    [],
+  );
+
+  /** Runs `fn` with no other vault request in flight. */
+  const exclusively = useCallback(<T,>(fn: () => Promise<T>): Promise<T> => {
+    const run = syncChainRef.current.catch(() => undefined).then(fn);
+    syncChainRef.current = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  }, []);
+
+  /**
+   * Turns a failed round trip into something the status line can say.
+   *
+   * The distinction that matters to the user is whether their work is safe.
+   * It always is — every path here has already written to this device — so
+   * these are all "not published yet", and the loop above will publish them.
+   * A conflict is called out separately only because "offline" would be a
+   * lie about a server that answered.
+   */
+  const reportSyncFailure = useCallback((error: unknown, offlineMessage: string) => {
+    if (error instanceof RevisionConflictError) {
+      setSyncState("error");
+      setSyncMessage("Another device is writing right now — retrying shortly.");
+      return;
+    }
+    setSyncState("offline");
+    setSyncMessage(
+      error instanceof RemoteUnavailableError ? error.message : offlineMessage,
+    );
+  }, []);
+
+  /** Notes that the server now holds the envelope this device is using. */
+  const markEnvelopeSynced = useCallback(() => {
+    syncedEnvelopeRef.current = envelopeRef.current;
+  }, []);
+
+  /**
+   * Reconciles this device with the server, entry by entry.
+   *
+   * The old rule was that the higher revision won outright, which meant one
+   * side's work replaced the other's: an entry added on a phone vanished
+   * because a laptop saved afterwards. Both copies are merged instead — see
+   * `lib/vault/merge` for the rules — and the result is written here and
+   * published there, so the two converge instead of taking turns winning.
+   *
+   * Throws if the server cannot be reached. Callers decide what that means:
+   * a save treats it as "offline, saved locally", the background loop treats
+   * it as "try again shortly".
+   */
+  const reconcile = useCallback(
+    async (keyring: Keyring) => {
+      const envelope = envelopeRef.current;
+      if (!envelope) return;
+
+      const remote = await fetchRemoteVault();
+
+      if (!remote) {
+        // Nothing on the server yet — a new vault, or one deleted elsewhere.
+        const revision = revisionRef.current + 1;
+        await pushRemoteVault({
+          envelope,
+          items: encryptedRef.current,
+          deleted: deletedRef.current,
+          revision,
+        });
+        revisionRef.current = revision;
+        markEnvelopeSynced();
+        markSynced();
+        return;
+      }
+
+      const merged = mergeVaults(
+        {
+          envelope,
+          items: encryptedRef.current,
+          deleted: deletedRef.current,
+          revision: revisionRef.current,
+        },
+        remote,
+        {
+          // Either this session rotated the passphrase, or a past one did and
+          // the reload forgot: a device whose revision is ahead of the
+          // server's is a device carrying an unpublished write, and the
+          // envelope it holds is part of it.
+          envelopeChangedLocally:
+            envelopeRef.current !== syncedEnvelopeRef.current ||
+            revisionRef.current > remote.revision,
+        },
+      );
+
+      // A revision is only spent when there is something new to publish;
+      // agreeing with the server costs nothing and stays at its number.
+      const revision = merged.differsFromRemote ? merged.revision + 1 : merged.revision;
+
+      if (merged.differsFromLocal || revision !== revisionRef.current) {
+        await writeLocal(keyring, { ...merged, revision });
+      }
+      if (merged.differsFromLocal) await decryptInto(keyring);
+
+      if (merged.differsFromRemote) {
+        await pushRemoteVault({
+          envelope: merged.envelope,
+          items: merged.items,
+          deleted: merged.deleted,
+          revision,
+        });
+      }
+
+      markEnvelopeSynced();
+      markSynced();
+    },
+    [decryptInto, markEnvelopeSynced, markSynced, writeLocal],
+  );
+
   /** Encrypts current state and persists it locally, then remotely. */
   const persist = useCallback(
-    async (nextEncrypted: EncryptedItem[]) => {
+    async (nextEncrypted: EncryptedItem[], nextDeleted: Tombstone[] = deletedRef.current) => {
       const keyring = keyringRef.current;
       const envelope = envelopeRef.current;
       if (!keyring || !envelope) return;
 
-      const revision = revisionRef.current + 1;
-      const vault: EncryptedVault = {
+      // Local first: an offline save must still survive a reload.
+      await writeLocal(keyring, {
         envelope,
         items: nextEncrypted,
-        revision,
-        updatedAt: Date.now(),
-      };
-
-      encryptedRef.current = nextEncrypted;
-      revisionRef.current = revision;
-
-      // Local first: an offline save must still survive a reload.
-      await writeLocalVault(keyring.accountId, vault);
+        deleted: nextDeleted,
+        revision: revisionRef.current + 1,
+      });
 
       setSyncState("syncing");
       try {
-        await pushRemoteVault({ envelope, items: nextEncrypted, revision });
-        markSynced();
-      } catch (err) {
-        if (err instanceof RevisionConflictError) {
-          // Another device wrote while we were editing. Re-base onto the
-          // server's revision and retry once, rather than clobbering it.
-          revisionRef.current = err.currentRevision;
+        await exclusively(async () => {
+          // Read back rather than pushing what was captured above: a
+          // background sync may have run between the local write and this
+          // turn of the queue, and what belongs on the server is the state
+          // this device holds now, not the state it held when the user hit
+          // save.
+          const publishing = {
+            envelope: envelopeRef.current ?? envelope,
+            items: encryptedRef.current,
+            deleted: deletedRef.current,
+            revision: revisionRef.current,
+          };
+
           try {
-            await pushRemoteVault({
-              envelope,
-              items: nextEncrypted,
-              revision: err.currentRevision + 1,
-            });
-            revisionRef.current = err.currentRevision + 1;
+            await pushRemoteVault(publishing);
+            markEnvelopeSynced();
             markSynced();
-            return;
-          } catch {
-            setSyncState("error");
-            setSyncMessage("Another device changed this vault. Reload to merge.");
-            return;
+          } catch (err) {
+            // Another device wrote while we were editing. Merging keeps both
+            // sides' work; the old behaviour re-pushed this device's state at
+            // the server's revision plus one, which silently discarded
+            // whatever the other device had just saved.
+            if (!(err instanceof RevisionConflictError)) throw err;
+            await reconcile(keyring);
           }
-        }
-        setSyncState("offline");
-        setSyncMessage(
-          err instanceof RemoteUnavailableError
-            ? err.message
-            : "Saved on this device — sync will retry.",
-        );
+        });
+      } catch (err) {
+        reportSyncFailure(err, "Saved on this device — sync will retry.");
       }
     },
-    [markSynced],
+    [exclusively, markEnvelopeSynced, markSynced, reconcile, reportSyncFailure, writeLocal],
   );
 
   /**
-   * Reconciles with the server once the vault is open.
+   * Reconciles with the server, from wherever the app happens to be.
    *
-   * This can only run after unlocking, because authenticating *is* unlocking:
-   * the key that signs the login challenge comes out of the same envelope as
-   * the key that decrypts. The higher revision wins, so a device that was
-   * offline while another one wrote does not resurrect stale data.
+   * Called on unlock, when the network comes back, when the tab returns to
+   * the foreground, and on a slow timer while the vault is open. All of them
+   * are the same operation, and none of them may run twice at once.
    */
-  const syncAfterUnlock = useCallback(
-    async (keyring: Keyring) => {
-      setSyncState("syncing");
-      try {
-        const remote = await fetchRemoteVault();
+  const syncNow = useCallback(async () => {
+    const keyring = keyringRef.current;
+    if (!keyring) return;
 
-        if (remote && remote.revision > revisionRef.current) {
-          envelopeRef.current = remote.envelope;
-          encryptedRef.current = remote.items;
-          revisionRef.current = remote.revision;
-          await writeLocalVault(keyring.accountId, remote);
-          await decryptInto(keyring);
-          markSynced();
-          return;
-        }
-
-        if (!remote || remote.revision < revisionRef.current) {
-          // This device is ahead — an offline edit, or a vault that has never
-          // reached the server. Push rather than silently diverge.
-          const envelope = envelopeRef.current;
-          if (envelope) {
-            await pushRemoteVault({
-              envelope,
-              items: encryptedRef.current,
-              revision: revisionRef.current + 1,
-            });
-            revisionRef.current += 1;
-          }
-        }
-        markSynced();
-      } catch (err) {
-        setSyncState("offline");
-        setSyncMessage(
-          err instanceof RemoteUnavailableError
-            ? err.message
-            : "Working offline — changes are saved on this device.",
-        );
-      }
-    },
-    [decryptInto, markSynced],
-  );
+    setSyncState("syncing");
+    try {
+      await exclusively(() => reconcile(keyring));
+    } catch (err) {
+      reportSyncFailure(err, "Working offline — changes are saved on this device.");
+    }
+  }, [exclusively, reconcile, reportSyncFailure]);
 
   /** Everything that has to happen the moment a keyring exists. */
   const adoptKeyring = useCallback((keyring: Keyring) => {
@@ -463,11 +619,15 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
 
         adoptKeyring(keyring);
         envelopeRef.current = local.envelope;
+        // Whatever this device holds is, as far as it knows, what the server
+        // agreed to last. `reconcile` finds out shortly.
+        syncedEnvelopeRef.current = local.envelope;
         encryptedRef.current = local.items;
+        deletedRef.current = local.deleted ?? [];
         revisionRef.current = local.revision;
         await decryptInto(keyring);
         setStatus("unlocked");
-        void syncAfterUnlock(keyring);
+        void syncNow();
         return true;
       } catch {
         // Half-adopted is worse than not adopted: leave nothing behind for
@@ -507,7 +667,9 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
       }
 
       envelopeRef.current = local.envelope;
+      syncedEnvelopeRef.current = local.envelope;
       encryptedRef.current = local.items;
+      deletedRef.current = local.deleted ?? [];
       revisionRef.current = local.revision;
       setAccountId(stored);
       setStatus("locked");
@@ -517,7 +679,7 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [adoptKeyring, decryptInto, syncAfterUnlock]);
+  }, [adoptKeyring, decryptInto, syncNow]);
 
   const createVault = useCallback(
     async (recoveryPhrase: string, passphrase: string) => {
@@ -526,7 +688,11 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
       const { envelope, keyring } = await createKeyring(recoveryPhrase, passphrase);
       adoptKeyring(keyring);
       envelopeRef.current = envelope;
+      // Nothing has been published yet, so the envelope counts as unsynced
+      // until the first push — which is what makes it win any merge before.
+      syncedEnvelopeRef.current = null;
       encryptedRef.current = [];
+      deletedRef.current = [];
       revisionRef.current = 0;
       setItems([]);
       // Offered here rather than left to Settings: registering costs the
@@ -568,7 +734,11 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
 
       adoptKeyring(keyring);
       envelopeRef.current = envelope;
+      // Rewrapped here for this device's new passphrase, so it must survive
+      // the merge that the push below performs.
+      syncedEnvelopeRef.current = remote.envelope;
       encryptedRef.current = remote.items;
+      deletedRef.current = remote.deleted ?? [];
       revisionRef.current = remote.revision;
       await decryptInto(keyring);
       setSetupPending(isPasskeySupported() && !readPasskeyHint());
@@ -591,7 +761,7 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
         adoptKeyring(keyring);
         await decryptInto(keyring);
         setStatus("unlocked");
-        void syncAfterUnlock(keyring);
+        void syncNow();
       } catch (err) {
         if (err instanceof IncorrectPassphraseError) {
           setError(err.message);
@@ -601,7 +771,7 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
         throw err;
       }
     },
-    [accountId, adoptKeyring, decryptInto, syncAfterUnlock],
+    [accountId, adoptKeyring, decryptInto, syncNow],
   );
 
   /**
@@ -631,16 +801,13 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
       const keyring = await keyringFromRootMaterial(material);
       adoptKeyring(keyring);
 
-      const remote = await fetchRemoteVault();
+      // Whatever this device already holds is enough to open with; the
+      // server is only consulted when there is nothing here, and the two are
+      // reconciled by the sync below rather than one replacing the other.
       const local = await readLocalVault(keyring.accountId);
-      const chosen =
-        remote && local
-          ? remote.revision >= local.revision
-            ? remote
-            : local
-          : (remote ?? local);
+      const base = local ?? (await fetchRemoteVault());
 
-      if (!chosen) {
+      if (!base) {
         clearAuthIdentity();
         keyringRef.current = null;
         throw new Error(
@@ -648,14 +815,17 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
         );
       }
 
-      envelopeRef.current = chosen.envelope;
-      encryptedRef.current = chosen.items;
-      revisionRef.current = chosen.revision;
-      if (chosen === remote) await writeLocalVault(keyring.accountId, chosen);
+      envelopeRef.current = base.envelope;
+      syncedEnvelopeRef.current = base.envelope;
+      encryptedRef.current = base.items;
+      deletedRef.current = base.deleted ?? [];
+      revisionRef.current = base.revision;
+      if (!local) await writeLocalVault(keyring.accountId, base);
 
       await decryptInto(keyring);
       setStatus("unlocked");
       markSynced();
+      void syncNow();
 
       // Confirmed working, so the next visit can reach for it unprompted.
       writePasskeyHint();
@@ -665,7 +835,7 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
       // of the identity. Nothing downstream reads this material again.
       wipe(material.rootKey, material.authSecret);
     }
-  }, [adoptKeyring, decryptInto, markSynced]);
+  }, [adoptKeyring, decryptInto, markSynced, syncNow]);
 
   /**
    * Recovery path: prove ownership with the phrase, then set a new
@@ -701,14 +871,23 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
    * and it keeps the root key out of memory for everything except this call.
    */
   const addPasskey = useCallback(
-    async (passphrase: string) => {
+    async (passphrase: string, label?: string) => {
       const envelope = envelopeRef.current;
       const keyring = keyringRef.current;
       if (!envelope || !keyring) throw new Error("Unlock the vault first.");
 
       const material = await exportRootMaterial(keyring.accountId, envelope, passphrase);
       try {
-        await registerPasskey(keyring.accountId, material);
+        await registerPasskey(
+          keyring.accountId,
+          material,
+          // Sealed under the data key, like everything else the server keeps:
+          // a list of device names beside an account id is exactly the kind
+          // of thing this design is built not to hand over.
+          label && label.trim().length > 0
+            ? { dataKey: keyring.dataKey, label }
+            : undefined,
+        );
         writePasskeyHint();
         setPasskeyHint(true);
       } finally {
@@ -729,6 +908,32 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
     await removeAllPasskeys();
     clearPasskeyHint();
     setPasskeyHint(false);
+  }, []);
+
+  /**
+   * Revokes one authenticator.
+   *
+   * The hint stays: the others still work, and clearing it would stop this
+   * device offering the passkey it still has. It is only wrong once the last
+   * one is gone, which the caller can see from the list it just refreshed.
+   */
+  const forgetPasskey = useCallback(async (hash: string) => {
+    await removePasskey(hash);
+  }, []);
+
+  const listPasskeyDevices = useCallback(async (): Promise<PasskeyDevice[]> => {
+    const keyring = keyringRef.current;
+    const summaries = await listPasskeys();
+
+    return Promise.all(
+      summaries.map(async (summary) => ({
+        hash: summary.hash,
+        createdAt: summary.createdAt,
+        name: keyring
+          ? await openPasskeyLabel(keyring.dataKey, keyring.accountId, summary)
+          : null,
+      })),
+    );
   }, []);
 
   /** Leaves the setup flow and hands the user their vault. */
@@ -812,11 +1017,22 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
     [items, persist],
   );
 
+  /**
+   * Deleting an entry, in a way that survives another device.
+   *
+   * Dropping it from the list is only half of it: sync merges what the two
+   * sides hold, and under a merge an entry this device no longer has is an
+   * entry the other device still does — so it would come straight back on
+   * the next round trip. The tombstone is what says it is gone on purpose.
+   */
   const removeItem = useCallback(
     async (id: string) => {
       if (!keyringRef.current) throw new Error("Vault is locked.");
       setItems((current) => current.filter((item) => item.id !== id));
-      await persist(encryptedRef.current.filter((item) => item.id !== id));
+      await persist(
+        encryptedRef.current.filter((item) => item.id !== id),
+        addTombstone(deletedRef.current, id),
+      );
     },
     [persist],
   );
@@ -942,6 +1158,40 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
     setStatus("absent");
   }, [accountId, reset]);
 
+  /**
+   * Keeping an open vault in step with the server.
+   *
+   * Three signals, one operation. Coming back online is the one that makes
+   * "sync will retry" true; returning to the tab catches up a device that was
+   * in the background while another one wrote; the timer covers the case
+   * where neither fires — two tabs side by side on the same desk, both open,
+   * both editing.
+   */
+  useEffect(() => {
+    if (status !== "unlocked") return;
+
+    const catchUp = () => void syncNow();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") catchUp();
+    };
+
+    window.addEventListener("online", catchUp);
+    document.addEventListener("visibilitychange", onVisible);
+    const timer = window.setInterval(() => {
+      // Nothing to gain from a round trip the browser already knows will
+      // fail; the `online` listener above picks it up when it will not.
+      if (navigator.onLine !== false && document.visibilityState === "visible") {
+        catchUp();
+      }
+    }, SYNC_INTERVAL_MS);
+
+    return () => {
+      window.removeEventListener("online", catchUp);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.clearInterval(timer);
+    };
+  }, [status, syncNow]);
+
   // ---- Auto-lock -------------------------------------------------------
   // A vault left open on an unattended screen is the most realistic way this
   // app leaks. The timer resets on genuine interaction only.
@@ -1010,6 +1260,8 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
       forgetDevice,
       addPasskey,
       forgetPasskeys,
+      forgetPasskey,
+      listPasskeyDevices,
       stepUpVerified: verifiedAt !== null,
       verifyPassphrase,
       verifyPasskey,
@@ -1048,6 +1300,8 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
       forgetDevice,
       addPasskey,
       forgetPasskeys,
+      forgetPasskey,
+      listPasskeyDevices,
       verifiedAt,
       verifyPassphrase,
       verifyPasskey,

@@ -48,11 +48,22 @@ export async function rateLimit(
 
 /**
  * Best-effort client address, used only to bucket unauthenticated traffic.
- * Trusted no further than that: these headers are caller-supplied and only
- * meaningful because Vercel's proxy rewrites them at the edge.
+ *
+ * Every one of these headers is a claim the caller can make; they are
+ * meaningful only because a proxy in front of this rewrites them. Vercel's
+ * own header is preferred for that reason — it is set by the platform and a
+ * client-supplied copy is discarded — with the conventional two behind it.
+ *
+ * Deploying this behind anything that does not rewrite `x-forwarded-for`
+ * makes per-address limits bypassable by sending a different value each time.
+ * The limits on authenticated routes are keyed by account and unaffected.
  */
 export function clientIdentity(request: Request): string {
+  const vercel = request.headers.get("x-vercel-forwarded-for");
+  if (vercel) return vercel.split(",")[0]!.trim();
+
   const forwarded = request.headers.get("x-forwarded-for");
   if (forwarded) return forwarded.split(",")[0]!.trim();
+
   return request.headers.get("x-real-ip") ?? "unknown";
 }

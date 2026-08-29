@@ -59,9 +59,10 @@ Three independent paths reach the root key:
   as ciphertext.
 
 What the server holds, in full: a wrapped root key, its public KDF parameters,
-an array of sealed entries, a revision counter, and any sealed passkey records.
-It is filed under a hash of the account's public key — there is no email,
-username or third-party identifier anywhere in it.
+an array of sealed entries, a list of deleted entry ids, a revision counter,
+and any sealed passkey records — each with a device name that is itself
+ciphertext. It is filed under a hash of the account's public key — there is no
+email, username or third-party identifier anywhere in it.
 
 ### Authentication
 
@@ -161,6 +162,42 @@ record is sealed.
   `publickey-credentials-get=(self)` — an embedded frame can never ask for an
   assertion on Purbo's behalf.
 
+### Syncing between devices
+
+Two devices holding the same vault is the ordinary case, and it is where a
+password manager quietly loses data. The rule cannot be "newest revision
+wins": that is not a merge, it is one device's copy replacing the other's, and
+the entry you added on your phone is gone because your laptop saved after it.
+
+So the two copies are merged, entry by entry, on the client:
+
+- an entry only one side has is kept
+- an entry both sides have is kept at its newer `updatedAt`
+- an identical timestamp is broken by comparing ciphertext, so both devices
+  independently reach the same answer instead of each preferring its own
+- a **tombstone** — an id and a time, no ciphertext — carries a deletion, which
+  a union of two vaults otherwise cannot express: an entry deleted here is
+  simply an entry the other device still has, and it would come back
+- an entry edited after it was deleted elsewhere survives, and the deletion is
+  discarded: an edit is evidence somebody still wants it
+
+Merging is convergent — running it in either direction gives the same vault —
+and every rule runs on metadata that is already outside the ciphertext, so
+none of it asks the server to understand anything. Tombstones are forgotten
+after ninety days, which is the one limit worth stating: a device that has
+been offline longer than that can resurrect an entry it never heard was
+deleted.
+
+The envelope is the one thing that cannot be merged, since it is a single
+wrapped root key rather than a collection. The device that changed it wins, so
+a passphrase rotated on a laptop is not reverted by a phone that syncs
+afterwards.
+
+An open vault reconciles when it unlocks, when the network comes back, when
+its tab returns to the foreground, and on a slow timer in between. That last
+one is what makes two tabs open side by side converge rather than diverge
+until one of them is reloaded.
+
 ### Getting your data in and out
 
 Nothing here is a lock-in. Settings exports every entry as plaintext JSON —
@@ -181,6 +218,14 @@ unchanged, so entries stay valid and registered passkeys keep working. Proving
 the current passphrase is enough for it — requiring the 24 words to rotate a
 passphrase would mean taking the recovery phrase out of wherever it is safely
 written down, which is the larger risk of the two.
+
+Passkeys are revoked one at a time. Each carries a name you give it when you
+register it — sealed under the vault's data key, so the server stores a device
+list it cannot read — and that name is the whole point: revoking the phone you
+lost should not mean revoking the three devices you still have. Deleting the
+vault revokes all of them server-side, because a sealed passkey record holds a
+copy of the root key and leaving it behind would mean "delete my vault" kept
+the keys to it.
 
 ## Installing it
 
@@ -330,7 +375,7 @@ app/
 lib/
   crypto/             Primitives, KDFs, AEAD, BIP39, generator, TOTP
   auth/               Identity derivation, session tokens, passkeys
-  vault/              Key hierarchy, record encryption, state machine, tags, import
+  vault/              Key hierarchy, record encryption, state machine, merge, tags, import
   storage/            IndexedDB cache, tab session keys, remote sync client
   pwa/                Install-prompt state
   server/             Auth, tokens, KV driver, rate limiting, wire validation
@@ -339,7 +384,7 @@ public/sw.js          Service worker — app shell only, never vault data
 public/screenshots/   Manifest screenshots for the install dialog
 scripts/              Icon and screenshot generation, build-integrity verification
 proxy.ts              Per-request CSP nonce and security headers
-tests/                Crypto and key-hierarchy checks
+tests/                Crypto, merge and API-route checks
 SECURITY.md           Vulnerability disclosure policy
 ```
 

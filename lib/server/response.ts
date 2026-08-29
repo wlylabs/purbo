@@ -3,6 +3,7 @@ import "server-only";
 import { NextResponse } from "next/server";
 
 import { AuthConfigurationError, UnauthorizedError } from "./auth";
+import { StorageConfigurationError } from "./kv";
 
 /**
  * Shared response shape for every API route.
@@ -38,7 +39,7 @@ export function handleError(scope: string, error: unknown) {
   if (error instanceof AuthConfigurationError) {
     return json({ error: "auth_not_configured", message: error.message }, 503);
   }
-  if (error instanceof Error && error.message.includes("No vault storage configured")) {
+  if (error instanceof StorageConfigurationError) {
     return json({ error: "storage_not_configured", message: error.message }, 503);
   }
   console.error(`[${scope}] unhandled error`, error);
