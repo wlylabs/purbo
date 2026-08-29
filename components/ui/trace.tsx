@@ -138,7 +138,7 @@ export function TraceStep({
   return (
     <li className={cn("relative", !last && "border-b border-line")}>
       {rail}
-      <details className="group/details">
+      <details className="group/details disclosure">
         <summary
           className={cn(
             "flex cursor-pointer list-none gap-3 px-4 py-3.5 interactive sm:px-5",
@@ -154,7 +154,7 @@ export function TraceStep({
         </summary>
         {/* Indented to the title's left edge — padding + marker + gap — so the
             detail reads as continuing the step rather than as a new column. */}
-        <div className="animate-fade pb-4 pl-11 pr-4 text-[0.8125rem] leading-relaxed text-ink-muted sm:pl-12 sm:pr-5">
+        <div className="pb-4 pl-11 pr-4 text-[0.8125rem] leading-relaxed text-ink-muted sm:pl-12 sm:pr-5">
           {children}
         </div>
       </details>

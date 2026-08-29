@@ -21,7 +21,7 @@ import { ApprovalCard } from "@/components/ui/approval";
 import { Button } from "@/components/ui/button";
 import { CopyRow } from "@/components/ui/copy-row";
 import { Kbd } from "@/components/ui/kbd";
-import { Badge, Card, Chip, Notice } from "@/components/ui/primitives";
+import { Badge, Card, Chip, Notice, Reveal } from "@/components/ui/primitives";
 import { estimateStrength } from "@/lib/crypto/password";
 import { useVault } from "@/lib/vault/provider";
 import { collectTags, hasTag } from "@/lib/vault/tags";
@@ -534,8 +534,17 @@ function EntryCard({
               void onToggleFavourite().catch(() => undefined);
             }}
           >
+            {/* Keyed on the state so the filled star is a fresh element and
+                plays its entrance: starring something is a click whose only
+                result is four pixels changing colour, and without the pop it
+                is easy to miss whether it landed. Unstarring is the quieter
+                event and swaps plainly. */}
             <Star
-              className={cn("size-4", item.favourite && "fill-current text-caution")}
+              key={item.favourite ? "on" : "off"}
+              className={cn(
+                "size-4",
+                item.favourite && "animate-pop fill-current text-caution",
+              )}
               aria-hidden
             />
           </Button>
@@ -639,7 +648,11 @@ function EntryCard({
           </div>
         ) : null}
 
-        {confirmingDelete ? (
+        {/* Backing out of a deletion is the click most worth animating in the
+            whole card: the card is asking a question, and a question that
+            disappears between two frames leaves the reader unsure whether they
+            answered it or mis-clicked something else. */}
+        <Reveal open={confirmingDelete}>
           <ApprovalCard
             title="Confirm deletion"
             question={`Delete “${item.name}” from your vault?`}
@@ -659,7 +672,7 @@ function EntryCard({
               }
             }}
           />
-        ) : null}
+        </Reveal>
 
         <p className="mt-auto pt-1 text-meta">
           Created {formatRelativeTime(item.createdAt)}

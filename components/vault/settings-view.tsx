@@ -15,7 +15,7 @@ import { ThemeToggle } from "@/components/theme";
 import { ApprovalCard } from "@/components/ui/approval";
 import { Button } from "@/components/ui/button";
 import { PasswordInput } from "@/components/ui/input";
-import { Card, ChipRadioGroup, Notice } from "@/components/ui/primitives";
+import { Card, ChipRadioGroup, Notice, Reveal } from "@/components/ui/primitives";
 import { Trace, TraceStep } from "@/components/ui/trace";
 import {
   PasskeyCancelledError,
@@ -117,7 +117,7 @@ function PasskeySection() {
                 : `${count} passkey${count === 1 ? "" : "s"} registered to this vault.`}
           </p>
 
-          {adding ? (
+          <Reveal open={adding}>
             <form onSubmit={submit} className="mt-4 space-y-4 border-t border-line pt-5">
               <p className="text-[0.8125rem] leading-relaxed text-ink-muted">
                 Confirm your passphrase. Registering unwraps the root key for exactly as
@@ -155,11 +155,12 @@ function PasskeySection() {
                 </Button>
               </div>
             </form>
-          ) : (
+          </Reveal>
+          <Reveal open={!adding}>
             <div className="mt-4 flex flex-wrap items-center gap-2">
               <Button variant="secondary" size="sm" onClick={() => setAdding(true)}>
                 {added ? (
-                  <Check className="size-3.5 text-positive" aria-hidden />
+                  <Check className="animate-pop size-3.5 text-positive" aria-hidden />
                 ) : (
                   <Fingerprint className="size-3.5" aria-hidden />
                 )}
@@ -192,7 +193,7 @@ function PasskeySection() {
                 <p className="w-full text-xs leading-relaxed text-critical">{error}</p>
               ) : null}
             </div>
-          )}
+          </Reveal>
 
           {count > 0 ? (
             <p className="mt-3 text-[0.6875rem] leading-relaxed text-ink-subtle">
@@ -273,7 +274,10 @@ function ChangePassphraseSection() {
         the wrap changes.
       </p>
 
-      {open ? (
+      {/* The form unfolds from under the button that asked for it, and folds
+          back on Cancel. `autoFocus` inside still lands: `<Reveal>` only marks
+          itself inert on the way out. */}
+      <Reveal open={open}>
         <form onSubmit={submit} className="mt-5 space-y-5 border-t border-line pt-5">
           <PasswordInput
             label="Current passphrase"
@@ -321,16 +325,19 @@ function ChangePassphraseSection() {
             </Button>
           </div>
         </form>
-      ) : (
-        <Button variant="secondary" size="sm" className="mt-4" onClick={() => setOpen(true)}>
-          {done ? (
-            <Check className="size-3.5 text-positive" aria-hidden />
-          ) : (
-            <KeyRound className="size-3.5" aria-hidden />
-          )}
-          {done ? "Passphrase changed" : "Change passphrase"}
-        </Button>
-      )}
+      </Reveal>
+      <Reveal open={!open}>
+        <div className="pt-4">
+          <Button variant="secondary" size="sm" onClick={() => setOpen(true)}>
+            {done ? (
+              <Check className="animate-pop size-3.5 text-positive" aria-hidden />
+            ) : (
+              <KeyRound className="size-3.5" aria-hidden />
+            )}
+            {done ? "Passphrase changed" : "Change passphrase"}
+          </Button>
+        </div>
+      </Reveal>
     </Card>
   );
 }
@@ -420,6 +427,19 @@ function ImportSection() {
 
   const total = staged ? staged.fresh.length + (includeDuplicates ? staged.duplicates.length : 0) : 0;
 
+  /*
+   * The last thing that was staged, kept for as long as the panel takes to
+   * fold away.
+   *
+   * Clearing `staged` is what closes the panel, and the panel is made of what
+   * `staged` holds — so on Cancel there would be nothing left to render for
+   * the length of the close. Holding the previous value lets the summary
+   * collapse with its own numbers still in it rather than blanking first.
+   */
+  const lastStaged = useRef<Staged | null>(null);
+  if (staged) lastStaged.current = staged;
+  const showing = staged ?? lastStaged.current;
+
   return (
     <Card className="p-5 sm:p-6">
       <h2 className="text-[0.9375rem] font-semibold tracking-tight">Import</h2>
@@ -442,106 +462,104 @@ function ImportSection() {
         }}
       />
 
-      {staged ? (
-        <div className="mt-4 space-y-4 border-t border-line pt-5">
-          <div className="space-y-1">
-            <p className="text-[0.875rem] font-medium">
-              {staged.filename} — read as {FORMAT_LABELS[staged.format] ?? "a CSV export"}
-            </p>
-            <ul className="space-y-0.5 text-[0.8125rem] leading-relaxed text-ink-muted">
-              <li>
-                <strong className="text-ink tabular-nums">{staged.fresh.length}</strong>{" "}
-                {staged.fresh.length === 1 ? "entry is" : "entries are"} new to this vault.
-              </li>
-              {staged.duplicates.length > 0 ? (
+      <Reveal open={staged !== null}>
+        {showing ? (
+          <div className="mt-4 space-y-4 border-t border-line pt-5">
+            <div className="space-y-1">
+              <p className="text-[0.875rem] font-medium">
+                {showing.filename} — read as {FORMAT_LABELS[showing.format] ?? "a CSV export"}
+              </p>
+              <ul className="space-y-0.5 text-[0.8125rem] leading-relaxed text-ink-muted">
                 <li>
-                  <strong className="text-ink tabular-nums">{staged.duplicates.length}</strong>{" "}
-                  already {staged.duplicates.length === 1 ? "matches an entry" : "match entries"}{" "}
-                  you have, by name and username.
+                  <strong className="text-ink tabular-nums">{showing.fresh.length}</strong>{" "}
+                  {showing.fresh.length === 1 ? "entry is" : "entries are"} new to this vault.
                 </li>
-              ) : null}
-              {staged.skipped > 0 ? (
-                <li>
-                  <strong className="text-ink tabular-nums">{staged.skipped}</strong>{" "}
-                  {staged.skipped === 1 ? "row was" : "rows were"} skipped for having no name
-                  or no password.
-                </li>
-              ) : null}
-            </ul>
+                {showing.duplicates.length > 0 ? (
+                  <li>
+                    <strong className="text-ink tabular-nums">{showing.duplicates.length}</strong>{" "}
+                    already {showing.duplicates.length === 1 ? "matches an entry" : "match entries"}{" "}
+                    you have, by name and username.
+                  </li>
+                ) : null}
+                {showing.skipped > 0 ? (
+                  <li>
+                    <strong className="text-ink tabular-nums">{showing.skipped}</strong>{" "}
+                    {showing.skipped === 1 ? "row was" : "rows were"} skipped for having no name
+                    or no password.
+                  </li>
+                ) : null}
+              </ul>
+            </div>
+
+            {showing.duplicates.length > 0 ? (
+              <label className="flex cursor-pointer items-start gap-2.5 text-[0.8125rem] leading-relaxed text-ink-muted">
+                <input
+                  type="checkbox"
+                  checked={includeDuplicates}
+                  onChange={(event) => setIncludeDuplicates(event.target.checked)}
+                  className="mt-0.5 size-4 shrink-0 accent-[var(--ink)]"
+                />
+                <span>
+                  <span className="block font-medium text-ink">Import the duplicates too</span>
+                  Off by default: two entries with the same name and username are almost always
+                  the same account imported twice, and telling them apart afterwards means
+                  opening both.
+                </span>
+              </label>
+            ) : null}
+
+            {error ? (
+              <Notice tone="critical" icon={<AlertTriangle className="size-4" />}>
+                {error}
+              </Notice>
+            ) : null}
+
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={busy}
+                onClick={() => setStaged(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                className="flex-1"
+                loading={busy}
+                disabled={total === 0}
+                onClick={() => void confirm()}
+              >
+                {total === 0
+                  ? "Nothing new to import"
+                  : `Import ${total} ${total === 1 ? "entry" : "entries"}`}
+              </Button>
+            </div>
           </div>
-
-          {staged.duplicates.length > 0 ? (
-            <label className="flex cursor-pointer items-start gap-2.5 text-[0.8125rem] leading-relaxed text-ink-muted">
-              <input
-                type="checkbox"
-                checked={includeDuplicates}
-                onChange={(event) => setIncludeDuplicates(event.target.checked)}
-                className="mt-0.5 size-4 shrink-0 accent-[var(--ink)]"
-              />
-              <span>
-                <span className="block font-medium text-ink">Import the duplicates too</span>
-                Off by default: two entries with the same name and username are almost always
-                the same account imported twice, and telling them apart afterwards means
-                opening both.
-              </span>
-            </label>
-          ) : null}
-
-          {error ? (
-            <Notice tone="critical" icon={<AlertTriangle className="size-4" />}>
-              {error}
-            </Notice>
-          ) : null}
-
-          <div className="flex gap-2">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              disabled={busy}
-              onClick={() => setStaged(null)}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              className="flex-1"
-              loading={busy}
-              disabled={total === 0}
-              onClick={() => void confirm()}
-            >
-              {total === 0
-                ? "Nothing new to import"
-                : `Import ${total} ${total === 1 ? "entry" : "entries"}`}
-            </Button>
-          </div>
-        </div>
-      ) : (
-        <>
-          <Button
-            variant="secondary"
-            size="sm"
-            className="mt-4"
-            onClick={() => inputRef.current?.click()}
-          >
+        ) : null}
+      </Reveal>
+      <Reveal open={staged === null}>
+        <div className="pt-4">
+          <Button variant="secondary" size="sm" onClick={() => inputRef.current?.click()}>
             <Upload className="size-3.5" aria-hidden />
             Choose a file
           </Button>
 
-          {imported !== null ? (
+          <Reveal open={imported !== null}>
             <Notice tone="positive" className="mt-4" icon={<Check className="size-4" />}>
               {imported} {imported === 1 ? "entry" : "entries"} imported and encrypted.
             </Notice>
-          ) : null}
+          </Reveal>
 
-          {error ? (
+          <Reveal open={error !== null}>
             <Notice tone="critical" className="mt-4" icon={<AlertTriangle className="size-4" />}>
               {error}
             </Notice>
-          ) : null}
-        </>
-      )}
+          </Reveal>
+        </div>
+      </Reveal>
     </Card>
   );
 }
@@ -572,6 +590,10 @@ export function SettingsView() {
   const [confirmingDestroy, setConfirmingDestroy] = useState(false);
   const [destroying, setDestroying] = useState(false);
   const [confirmingExport, setConfirmingExport] = useState(false);
+
+  // A step-up already passed this session stands, so asking again would be a
+  // challenge with a known answer.
+  const askingExport = confirmingExport && !stepUpVerified;
 
   /**
    * Exports the vault as plaintext JSON.
@@ -627,11 +649,17 @@ export function SettingsView() {
             label: choice.label,
           }))}
         />
-        {autoLockMinutes === 0 ? (
-          <Notice tone="caution" className="mt-4" icon={<AlertTriangle className="size-4" />}>
-            With auto-lock off, the vault stays decrypted until you lock it or close the tab.
-          </Notice>
-        ) : null}
+        {/* Choosing "Never" is the one option here that makes the vault less
+            safe, so the warning grows out of the choice rather than blinking
+            into the layout under it. */}
+        <Reveal open={autoLockMinutes === 0}>
+          <div className="pt-4">
+            <Notice tone="caution" icon={<AlertTriangle className="size-4" />}>
+              With auto-lock off, the vault stays decrypted until you lock it or close the
+              tab.
+            </Notice>
+          </div>
+        </Reveal>
 
         {/* The timer covers a vault left alone. This covers a vault left in
             front of someone — the case where the wait never elapses because
@@ -798,9 +826,14 @@ export function SettingsView() {
           encrypted</strong> — anyone who opens it reads your passwords. Move it somewhere
           safe or delete it as soon as you are done.
         </p>
-        {/* The largest single disclosure the app can make, so it asks. */}
-        {confirmingExport && !stepUpVerified ? (
-          <div className="mt-4">
+        {/* The largest single disclosure the app can make, so it asks.
+            The two states are a pair of reveals rather than a ternary: the
+            button folds away as the challenge unfolds in its place, which is
+            one movement instead of a swap the eye has to re-read. The spacing
+            sits inside each reveal so it collapses along with the content
+            rather than leaving a gap behind. */}
+        <Reveal open={askingExport}>
+          <div className="pt-4">
             <StepUp
               action="download a plaintext copy of every entry"
               onVerified={() => {
@@ -810,18 +843,20 @@ export function SettingsView() {
               onCancel={() => setConfirmingExport(false)}
             />
           </div>
-        ) : (
-          <Button
-            variant="secondary"
-            size="sm"
-            className="mt-4"
-            disabled={items.length === 0}
-            onClick={() => (stepUpVerified ? exportVault() : setConfirmingExport(true))}
-          >
-            <Download className="size-3.5" aria-hidden />
-            Export {items.length} {items.length === 1 ? "entry" : "entries"}
-          </Button>
-        )}
+        </Reveal>
+        <Reveal open={!askingExport}>
+          <div className="pt-4">
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={items.length === 0}
+              onClick={() => (stepUpVerified ? exportVault() : setConfirmingExport(true))}
+            >
+              <Download className="size-3.5" aria-hidden />
+              Export {items.length} {items.length === 1 ? "entry" : "entries"}
+            </Button>
+          </div>
+        </Reveal>
       </Card>
 
       <Card className="border-critical/30 p-5 sm:p-6">
@@ -836,42 +871,47 @@ export function SettingsView() {
         {/* The gate is only raised once the user has asked for it. Leaving a
             typed confirmation field permanently on screen trains people to
             fill it in, which is the opposite of what it is for. */}
-        {confirmingDestroy && !stepUpVerified ? (
-          <div className="mt-5">
+        <Reveal open={confirmingDestroy && !stepUpVerified}>
+          <div className="pt-5">
             <StepUp
               action="delete this vault and everything in it"
               onCancel={() => setConfirmingDestroy(false)}
             />
           </div>
-        ) : confirmingDestroy ? (
-          <ApprovalCard
-            className="mt-5"
-            title="Irreversible"
-            question="Erase this vault and everything in it?"
-            consequences={[
-              `All ${items.length} ${items.length === 1 ? "entry is" : "entries are"} deleted from the server and from this device.`,
-              "Your 24-word recovery phrase will no longer restore anything — it decrypts data that will not exist.",
-              "Nobody, including us, can undo this. There is no backup we can read.",
-            ]}
-            confirmWord="DELETE"
-            confirmLabel="Delete vault permanently"
-            loading={destroying}
-            onCancel={() => setConfirmingDestroy(false)}
-            onConfirm={async () => {
-              setDestroying(true);
-              try {
-                await destroyVault();
-              } finally {
-                setDestroying(false);
-                setConfirmingDestroy(false);
-              }
-            }}
-          />
-        ) : (
-          <Button variant="danger" className="mt-5" onClick={() => setConfirmingDestroy(true)}>
-            Delete this vault
-          </Button>
-        )}
+        </Reveal>
+        <Reveal open={confirmingDestroy && stepUpVerified}>
+          <div className="pt-5">
+            <ApprovalCard
+              title="Irreversible"
+              question="Erase this vault and everything in it?"
+              consequences={[
+                `All ${items.length} ${items.length === 1 ? "entry is" : "entries are"} deleted from the server and from this device.`,
+                "Your 24-word recovery phrase will no longer restore anything — it decrypts data that will not exist.",
+                "Nobody, including us, can undo this. There is no backup we can read.",
+              ]}
+              confirmWord="DELETE"
+              confirmLabel="Delete vault permanently"
+              loading={destroying}
+              onCancel={() => setConfirmingDestroy(false)}
+              onConfirm={async () => {
+                setDestroying(true);
+                try {
+                  await destroyVault();
+                } finally {
+                  setDestroying(false);
+                  setConfirmingDestroy(false);
+                }
+              }}
+            />
+          </div>
+        </Reveal>
+        <Reveal open={!confirmingDestroy}>
+          <div className="pt-5">
+            <Button variant="danger" onClick={() => setConfirmingDestroy(true)}>
+              Delete this vault
+            </Button>
+          </div>
+        </Reveal>
       </Card>
     </div>
   );

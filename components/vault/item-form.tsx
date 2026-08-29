@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input, PasswordInput, Textarea } from "@/components/ui/input";
-import { Chip, Modal, Notice } from "@/components/ui/primitives";
+import { Chip, Modal, Notice, Reveal } from "@/components/ui/primitives";
 import { isValidTotpInput } from "@/lib/crypto/totp";
 import { normaliseTags } from "@/lib/vault/tags";
 import type { VaultItem, VaultItemDraft } from "@/lib/vault/types";
@@ -149,7 +149,11 @@ export function ItemForm({
             {showGenerator ? "Hide generator" : "Generate a password"}
           </Button>
 
-          {showGenerator ? (
+          {/* The generator unfolds under the button that asked for it and
+              folds away again when a password is taken from it, so "Use"
+              visibly hands the value up to the field rather than blinking the
+              panel out of existence. */}
+          <Reveal open={showGenerator}>
             <div className="rounded-[var(--radius-sm)] border border-line bg-surface p-4">
               <Generator
                 compact
@@ -159,7 +163,7 @@ export function ItemForm({
                 }}
               />
             </div>
-          ) : null}
+          </Reveal>
         </div>
 
         <Input
@@ -218,7 +222,12 @@ export function ItemForm({
             disabled={saving}
           >
             <Star
-              className={draft.favourite ? "mr-1.5 inline size-3.5 align-[-2px] fill-current" : "mr-1.5 inline size-3.5 align-[-2px]"}
+              key={draft.favourite ? "on" : "off"}
+              className={
+                draft.favourite
+                  ? "animate-pop mr-1.5 inline size-3.5 align-[-2px] fill-current"
+                  : "mr-1.5 inline size-3.5 align-[-2px]"
+              }
               aria-hidden
             />
             Favourite

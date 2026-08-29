@@ -182,136 +182,142 @@ export function LockScreen() {
         role="tabpanel"
         aria-labelledby={segmentedIds("lock", mode).tabId}
       >
-        {mode === "unlock" ? (
-          <form onSubmit={submitUnlock} className="space-y-6">
-            <div className="space-y-3">
-              <div className="grid size-10 place-items-center rounded-[var(--radius)] border border-line bg-surface">
-                <Lock className="size-4" aria-hidden />
-              </div>
-              <div className="space-y-1.5">
-                <h1 className="text-display text-2xl">Vault locked</h1>
-                <p className="text-[0.8125rem] leading-relaxed text-ink-muted">
-                  {autoPrompting
-                    ? "Confirm with your passkey to decrypt this vault, or use your passphrase below."
-                    : "Enter your passphrase to decrypt this vault in the browser."}
-                </p>
-              </div>
-            </div>
-
-            {/* The passkey sits above the field rather than below it: for a
-                device that has one registered it is the faster path, and
-                burying it under the passphrase input means it is only found
-                by people who already knew it was there. */}
-            {passkeyAvailable ? (
+        {/* Keyed on the mode so React remounts the panel rather than
+            reconciling two forms into each other — which is what lets the
+            arriving one play an entrance, and stops a value typed into one
+            from being inherited by the other. */}
+        <div key={mode} className="animate-fade">
+          {mode === "unlock" ? (
+            <form onSubmit={submitUnlock} className="space-y-6">
               <div className="space-y-3">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="lg"
-                  className="w-full"
-                  loading={passkeyBusy}
-                  onClick={() => void submitPasskey()}
-                >
-                  <Fingerprint className="size-4" aria-hidden />
-                  Unlock with a passkey
-                </Button>
-                {passkeyError ? (
-                  <p className="text-xs leading-relaxed text-critical">{passkeyError}</p>
-                ) : null}
-                <div className="flex items-center gap-3">
-                  <span className="h-px flex-1 bg-line" />
-                  <span className="text-[0.6875rem] uppercase tracking-wide text-ink-subtle">
-                    or
-                  </span>
-                  <span className="h-px flex-1 bg-line" />
+                <div className="grid size-10 place-items-center rounded-[var(--radius)] border border-line bg-surface">
+                  <Lock className="size-4" aria-hidden />
+                </div>
+                <div className="space-y-1.5">
+                  <h1 className="text-display text-2xl">Vault locked</h1>
+                  <p className="text-[0.8125rem] leading-relaxed text-ink-muted">
+                    {autoPrompting
+                      ? "Confirm with your passkey to decrypt this vault, or use your passphrase below."
+                      : "Enter your passphrase to decrypt this vault in the browser."}
+                  </p>
                 </div>
               </div>
-            ) : null}
 
-            <PasswordInput
-              label="Passphrase"
-              value={passphrase}
-              onChange={(event) => {
-                setPassphrase(event.target.value);
-                if (error) clearError();
-              }}
-              mono={false}
-              // Not while a passkey prompt is up: on a phone, focusing the
-              // field throws the keyboard over the system sheet.
-              autoFocus={!autoPrompting}
-              required
-              error={error}
-            />
+              {/* The passkey sits above the field rather than below it: for a
+                  device that has one registered it is the faster path, and
+                  burying it under the passphrase input means it is only found
+                  by people who already knew it was there. */}
+              {passkeyAvailable ? (
+                <div className="space-y-3">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="lg"
+                    className="w-full"
+                    loading={passkeyBusy}
+                    onClick={() => void submitPasskey()}
+                  >
+                    <Fingerprint className="size-4" aria-hidden />
+                    Unlock with a passkey
+                  </Button>
+                  {passkeyError ? (
+                    <p className="text-xs leading-relaxed text-critical">{passkeyError}</p>
+                  ) : null}
+                  <div className="flex items-center gap-3">
+                    <span className="h-px flex-1 bg-line" />
+                    <span className="text-[0.6875rem] uppercase tracking-wide text-ink-subtle">
+                      or
+                    </span>
+                    <span className="h-px flex-1 bg-line" />
+                  </div>
+                </div>
+              ) : null}
 
-            {busy ? <DerivingNotice /> : null}
-
-            <Button type="submit" size="lg" className="w-full" loading={busy} disabled={!passphrase}>
-              Unlock
-            </Button>
-          </form>
-        ) : (
-          <form onSubmit={submitRecovery} className="space-y-6">
-            <div className="space-y-1.5">
-              <h1 className="text-display text-2xl">Recover with your phrase</h1>
-              <p className="text-[0.8125rem] leading-relaxed text-ink-muted">
-                Enter all 24 words. Your entries stay readable — only the passphrase that
-                wraps the key is replaced.
-              </p>
-            </div>
-
-            <Textarea
-              label="Recovery phrase"
-              value={phrase}
-              onChange={(event) => setPhrase(event.target.value)}
-              placeholder="word one two three …"
-              rows={4}
-              autoComplete="off"
-              autoCorrect="off"
-              autoCapitalize="off"
-              spellCheck={false}
-              className="font-mono text-[0.8125rem]"
-              error={phrase.length > 0 && !phraseValid ? "Not a valid 24-word phrase." : null}
-              hint={phraseValid ? "Phrase checksum is valid." : "Separate each word with a space."}
-            />
-
-            <div className="space-y-4 border-t border-line pt-5">
               <PasswordInput
-                label="New passphrase"
-                value={newPassphrase}
-                onChange={(event) => setNewPassphrase(event.target.value)}
+                label="Passphrase"
+                value={passphrase}
+                onChange={(event) => {
+                  setPassphrase(event.target.value);
+                  if (error) clearError();
+                }}
                 mono={false}
+                // Not while a passkey prompt is up: on a phone, focusing the
+                // field throws the keyboard over the system sheet.
+                autoFocus={!autoPrompting}
                 required
+                error={error}
               />
-              <StrengthMeter password={newPassphrase} />
-              <PasswordInput
-                label="Confirm new passphrase"
-                value={confirmation}
-                onChange={(event) => setConfirmation(event.target.value)}
-                mono={false}
-                required
-                error={confirmation.length > 0 && !matches ? "Passphrases do not match." : null}
+
+              {busy ? <DerivingNotice /> : null}
+
+              <Button type="submit" size="lg" className="w-full" loading={busy} disabled={!passphrase}>
+                Unlock
+              </Button>
+            </form>
+          ) : (
+            <form onSubmit={submitRecovery} className="space-y-6">
+              <div className="space-y-1.5">
+                <h1 className="text-display text-2xl">Recover with your phrase</h1>
+                <p className="text-[0.8125rem] leading-relaxed text-ink-muted">
+                  Enter all 24 words. Your entries stay readable — only the passphrase that
+                  wraps the key is replaced.
+                </p>
+              </div>
+
+              <Textarea
+                label="Recovery phrase"
+                value={phrase}
+                onChange={(event) => setPhrase(event.target.value)}
+                placeholder="word one two three …"
+                rows={4}
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
+                className="font-mono text-[0.8125rem]"
+                error={phrase.length > 0 && !phraseValid ? "Not a valid 24-word phrase." : null}
+                hint={phraseValid ? "Phrase checksum is valid." : "Separate each word with a space."}
               />
-            </div>
 
-            {recoveryError ? (
-              <Notice tone="critical" icon={<AlertTriangle className="size-4" />}>
-                {recoveryError}
-              </Notice>
-            ) : null}
+              <div className="space-y-4 border-t border-line pt-5">
+                <PasswordInput
+                  label="New passphrase"
+                  value={newPassphrase}
+                  onChange={(event) => setNewPassphrase(event.target.value)}
+                  mono={false}
+                  required
+                />
+                <StrengthMeter password={newPassphrase} />
+                <PasswordInput
+                  label="Confirm new passphrase"
+                  value={confirmation}
+                  onChange={(event) => setConfirmation(event.target.value)}
+                  mono={false}
+                  required
+                  error={confirmation.length > 0 && !matches ? "Passphrases do not match." : null}
+                />
+              </div>
 
-            {busy ? <DerivingNotice /> : null}
+              {recoveryError ? (
+                <Notice tone="critical" icon={<AlertTriangle className="size-4" />}>
+                  {recoveryError}
+                </Notice>
+              ) : null}
 
-            <Button
-              type="submit"
-              size="lg"
-              className="w-full"
-              loading={busy}
-              disabled={!phraseValid || !newValid || !matches}
-            >
-              Recover vault
-            </Button>
-          </form>
-        )}
+              {busy ? <DerivingNotice /> : null}
+
+              <Button
+                type="submit"
+                size="lg"
+                className="w-full"
+                loading={busy}
+                disabled={!phraseValid || !newValid || !matches}
+              >
+                Recover vault
+              </Button>
+            </form>
+          )}
+        </div>
       </Card>
     </div>
   );

@@ -456,194 +456,199 @@ function CreateFlow({ onBack }: { onBack: () => void }) {
       <StepIndicator step={step} />
 
       <Card className="mt-5 p-5 sm:mt-6 sm:p-8">
-        {step === "intro" ? (
-          <div className="space-y-6">
-            <div className="space-y-3">
-              <ShieldCheck className="size-6" aria-hidden />
-              <h1 className="text-display text-2xl">Create your vault</h1>
-              <p className="text-[0.9375rem] leading-relaxed text-ink-muted">
-                Purbo is about to generate a 24-word recovery phrase in this browser. It
-                is the root of your vault — everything you save is encrypted under it, and
-                it is also what identifies you to the server.
-              </p>
-            </div>
+        {/* Keyed on the step, so Continue and Back both land as the next
+            screen arriving rather than as the card's contents being swapped
+            underneath a reader who is mid-sentence. */}
+        <div key={step} className="animate-fade">
+          {step === "intro" ? (
+            <div className="space-y-6">
+              <div className="space-y-3">
+                <ShieldCheck className="size-6" aria-hidden />
+                <h1 className="text-display text-2xl">Create your vault</h1>
+                <p className="text-[0.9375rem] leading-relaxed text-ink-muted">
+                  Purbo is about to generate a 24-word recovery phrase in this browser. It
+                  is the root of your vault — everything you save is encrypted under it, and
+                  it is also what identifies you to the server.
+                </p>
+              </div>
 
-            <Notice tone="caution" icon={<AlertTriangle className="size-4" />}>
-              The phrase is never sent anywhere, so it cannot be re-sent to you. If you
-              lose both the phrase and your passphrase, the vault cannot be opened by
-              anyone, including us. Have paper and a pen ready.
-            </Notice>
-
-            <div className="flex gap-2">
-              <Button variant="ghost" onClick={onBack}>
-                <ArrowLeft className="size-4" aria-hidden />
-                Back
-              </Button>
-              <Button className="flex-1" onClick={() => setStep("phrase")}>
-                Generate recovery phrase
-                <ArrowRight className="size-4" aria-hidden />
-              </Button>
-            </div>
-          </div>
-        ) : null}
-
-        {step === "phrase" ? (
-          <div className="space-y-6">
-            <div className="space-y-2">
-              <h1 className="text-display text-2xl">Your recovery phrase</h1>
-              <p className="text-[0.8125rem] leading-relaxed text-ink-muted">
-                Write these 24 words down in order and store them somewhere physical. Do
-                not photograph them, and do not put them in another password manager.
-              </p>
-            </div>
-
-            <div className="relative">
-              <ol
-                // Remounted on reveal so the words arrive in sequence rather
-                // than appearing all at once behind a lifting blur — the
-                // ordering is the thing that has to be copied correctly.
-                key={revealed ? "revealed" : "hidden"}
-                className={cn(
-                  "grid grid-cols-2 gap-px overflow-hidden rounded-[var(--radius)] border border-line bg-line sm:grid-cols-3",
-                  revealed ? "stagger" : "blur-sm select-none",
-                )}
-                aria-hidden={!revealed}
-              >
-                {words.map((word, index) => (
-                  <li
-                    key={`${index}-${word}`}
-                    style={{ "--stagger-index": index } as React.CSSProperties}
-                    className="flex items-baseline gap-2 bg-elevated px-3 py-2.5"
-                  >
-                    <span className="w-5 shrink-0 text-right font-mono text-[0.6875rem] tabular-nums text-ink-subtle">
-                      {index + 1}
-                    </span>
-                    <span className="font-mono text-[0.8125rem]">{word}</span>
-                  </li>
-                ))}
-              </ol>
-
-              {!revealed ? (
-                <button
-                  type="button"
-                  onClick={() => setRevealed(true)}
-                  className="interactive absolute inset-0 grid place-items-center rounded-[var(--radius)] bg-canvas/40 active:bg-canvas/60"
-                >
-                  <span className="inline-flex items-center gap-2 rounded-full border border-line bg-elevated px-4 py-2 text-[0.8125rem] font-medium shadow-pop">
-                    <Eye className="size-4" aria-hidden />
-                    Tap to reveal
-                  </span>
-                </button>
-              ) : null}
-            </div>
-
-            <div className="flex gap-2">
-              <Button
-                variant="secondary"
-                size="sm"
-                className="flex-1"
-                onClick={() => setRevealed((value) => !value)}
-              >
-                {revealed ? (
-                  <EyeOff className="size-3.5" aria-hidden />
-                ) : (
-                  <Eye className="size-3.5" aria-hidden />
-                )}
-                {revealed ? "Hide" : "Reveal"}
-              </Button>
-              <Button variant="secondary" size="sm" className="flex-1" onClick={copyPhrase}>
-                {copied ? (
-                  <Check className="size-3.5 text-positive" aria-hidden />
-                ) : (
-                  <Copy className="size-3.5" aria-hidden />
-                )}
-                {copied ? "Copied" : "Copy"}
-              </Button>
-            </div>
-
-            <label className="flex cursor-pointer items-start gap-2.5 text-[0.8125rem] leading-relaxed text-ink-muted">
-              <input
-                type="checkbox"
-                checked={acknowledged}
-                onChange={(event) => setAcknowledged(event.target.checked)}
-                className="mt-0.5 size-4 shrink-0 accent-[var(--ink)]"
-              />
-              I have written down all 24 words and understand they cannot be recovered.
-            </label>
-
-            {error ? <p className="text-xs text-critical">{error}</p> : null}
-
-            <div className="flex gap-2">
-              <Button variant="ghost" onClick={() => setStep("intro")}>
-                <ArrowLeft className="size-4" aria-hidden />
-                Back
-              </Button>
-              <Button
-                className="flex-1"
-                disabled={!acknowledged || !revealed}
-                onClick={() => setStep("passphrase")}
-              >
-                Continue
-                <ArrowRight className="size-4" aria-hidden />
-              </Button>
-            </div>
-          </div>
-        ) : null}
-
-        {step === "passphrase" ? (
-          <div className="space-y-6">
-            <div className="space-y-2">
-              <h1 className="text-display text-2xl">Set your passphrase</h1>
-              <p className="text-[0.8125rem] leading-relaxed text-ink-muted">
-                This unlocks the vault day to day. It is stretched with Argon2id in your
-                browser and never leaves this device.
-              </p>
-            </div>
-
-            <PassphraseFields
-              passphrase={passphrase}
-              confirmation={confirmation}
-              onPassphrase={setPassphrase}
-              onConfirmation={setConfirmation}
-              disabled={submitting}
-            />
-
-            <Notice tone="neutral">
-              A memorable passphrase of five or six unrelated words beats a short scramble — it
-              is easier to recall and harder to guess. Unrelated is the load-bearing word:
-              picking them yourself is where the randomness quietly leaks out, which is what
-              the suggestion above is for.
-            </Notice>
-
-            {error ? (
-              <Notice tone="critical" icon={<AlertTriangle className="size-4" />}>
-                {error}
+              <Notice tone="caution" icon={<AlertTriangle className="size-4" />}>
+                The phrase is never sent anywhere, so it cannot be re-sent to you. If you
+                lose both the phrase and your passphrase, the vault cannot be opened by
+                anyone, including us. Have paper and a pen ready.
               </Notice>
-            ) : null}
 
-            {submitting ? (
-              <WorkingNotice>
-                Deriving your keys with Argon2id and sealing the vault. This happens
-                entirely in this tab.
-              </WorkingNotice>
-            ) : null}
-
-            <div className="flex gap-2">
-              <Button variant="ghost" onClick={() => setStep("phrase")} disabled={submitting}>
-                <ArrowLeft className="size-4" aria-hidden />
-                Back
-              </Button>
-              <Button
-                className="flex-1"
-                loading={submitting}
-                disabled={!passphraseValid || !matches}
-                onClick={submit}
-              >
-                Create vault
-              </Button>
+              <div className="flex gap-2">
+                <Button variant="ghost" onClick={onBack}>
+                  <ArrowLeft className="size-4" aria-hidden />
+                  Back
+                </Button>
+                <Button className="flex-1" onClick={() => setStep("phrase")}>
+                  Generate recovery phrase
+                  <ArrowRight className="size-4" aria-hidden />
+                </Button>
+              </div>
             </div>
-          </div>
-        ) : null}
+          ) : null}
+
+          {step === "phrase" ? (
+            <div className="space-y-6">
+              <div className="space-y-2">
+                <h1 className="text-display text-2xl">Your recovery phrase</h1>
+                <p className="text-[0.8125rem] leading-relaxed text-ink-muted">
+                  Write these 24 words down in order and store them somewhere physical. Do
+                  not photograph them, and do not put them in another password manager.
+                </p>
+              </div>
+
+              <div className="relative">
+                <ol
+                  // Remounted on reveal so the words arrive in sequence rather
+                  // than appearing all at once behind a lifting blur — the
+                  // ordering is the thing that has to be copied correctly.
+                  key={revealed ? "revealed" : "hidden"}
+                  className={cn(
+                    "grid grid-cols-2 gap-px overflow-hidden rounded-[var(--radius)] border border-line bg-line sm:grid-cols-3",
+                    revealed ? "stagger" : "blur-sm select-none",
+                  )}
+                  aria-hidden={!revealed}
+                >
+                  {words.map((word, index) => (
+                    <li
+                      key={`${index}-${word}`}
+                      style={{ "--stagger-index": index } as React.CSSProperties}
+                      className="flex items-baseline gap-2 bg-elevated px-3 py-2.5"
+                    >
+                      <span className="w-5 shrink-0 text-right font-mono text-[0.6875rem] tabular-nums text-ink-subtle">
+                        {index + 1}
+                      </span>
+                      <span className="font-mono text-[0.8125rem]">{word}</span>
+                    </li>
+                  ))}
+                </ol>
+
+                {!revealed ? (
+                  <button
+                    type="button"
+                    onClick={() => setRevealed(true)}
+                    className="interactive absolute inset-0 grid place-items-center rounded-[var(--radius)] bg-canvas/40 active:bg-canvas/60"
+                  >
+                    <span className="inline-flex items-center gap-2 rounded-full border border-line bg-elevated px-4 py-2 text-[0.8125rem] font-medium shadow-pop">
+                      <Eye className="size-4" aria-hidden />
+                      Tap to reveal
+                    </span>
+                  </button>
+                ) : null}
+              </div>
+
+              <div className="flex gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="flex-1"
+                  onClick={() => setRevealed((value) => !value)}
+                >
+                  {revealed ? (
+                    <EyeOff className="size-3.5" aria-hidden />
+                  ) : (
+                    <Eye className="size-3.5" aria-hidden />
+                  )}
+                  {revealed ? "Hide" : "Reveal"}
+                </Button>
+                <Button variant="secondary" size="sm" className="flex-1" onClick={copyPhrase}>
+                  {copied ? (
+                    <Check className="animate-pop size-3.5 text-positive" aria-hidden />
+                  ) : (
+                    <Copy className="size-3.5" aria-hidden />
+                  )}
+                  {copied ? "Copied" : "Copy"}
+                </Button>
+              </div>
+
+              <label className="flex cursor-pointer items-start gap-2.5 text-[0.8125rem] leading-relaxed text-ink-muted">
+                <input
+                  type="checkbox"
+                  checked={acknowledged}
+                  onChange={(event) => setAcknowledged(event.target.checked)}
+                  className="mt-0.5 size-4 shrink-0 accent-[var(--ink)]"
+                />
+                I have written down all 24 words and understand they cannot be recovered.
+              </label>
+
+              {error ? <p className="text-xs text-critical">{error}</p> : null}
+
+              <div className="flex gap-2">
+                <Button variant="ghost" onClick={() => setStep("intro")}>
+                  <ArrowLeft className="size-4" aria-hidden />
+                  Back
+                </Button>
+                <Button
+                  className="flex-1"
+                  disabled={!acknowledged || !revealed}
+                  onClick={() => setStep("passphrase")}
+                >
+                  Continue
+                  <ArrowRight className="size-4" aria-hidden />
+                </Button>
+              </div>
+            </div>
+          ) : null}
+
+          {step === "passphrase" ? (
+            <div className="space-y-6">
+              <div className="space-y-2">
+                <h1 className="text-display text-2xl">Set your passphrase</h1>
+                <p className="text-[0.8125rem] leading-relaxed text-ink-muted">
+                  This unlocks the vault day to day. It is stretched with Argon2id in your
+                  browser and never leaves this device.
+                </p>
+              </div>
+
+              <PassphraseFields
+                passphrase={passphrase}
+                confirmation={confirmation}
+                onPassphrase={setPassphrase}
+                onConfirmation={setConfirmation}
+                disabled={submitting}
+              />
+
+              <Notice tone="neutral">
+                A memorable passphrase of five or six unrelated words beats a short scramble — it
+                is easier to recall and harder to guess. Unrelated is the load-bearing word:
+                picking them yourself is where the randomness quietly leaks out, which is what
+                the suggestion above is for.
+              </Notice>
+
+              {error ? (
+                <Notice tone="critical" icon={<AlertTriangle className="size-4" />}>
+                  {error}
+                </Notice>
+              ) : null}
+
+              {submitting ? (
+                <WorkingNotice>
+                  Deriving your keys with Argon2id and sealing the vault. This happens
+                  entirely in this tab.
+                </WorkingNotice>
+              ) : null}
+
+              <div className="flex gap-2">
+                <Button variant="ghost" onClick={() => setStep("phrase")} disabled={submitting}>
+                  <ArrowLeft className="size-4" aria-hidden />
+                  Back
+                </Button>
+                <Button
+                  className="flex-1"
+                  loading={submitting}
+                  disabled={!passphraseValid || !matches}
+                  onClick={submit}
+                >
+                  Create vault
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </div>
       </Card>
     </>
   );
@@ -675,12 +680,18 @@ function StepIndicator({ step }: { step: Step }) {
 
           return (
             <li key={item.id} className="flex-1" aria-current={active ? "step" : undefined}>
-              <span
-                className={cn(
-                  "block h-0.5 rounded-full transition-colors duration-300",
-                  done || active ? "bg-ink" : "bg-line",
-                )}
-              />
+              {/* The bar fills from its own left edge rather than changing
+                  colour all at once, so Continue reads as progress being
+                  made along the flow instead of a lamp switching on. */}
+              <span className="block h-0.5 overflow-hidden rounded-full bg-line">
+                <span
+                  className={cn(
+                    "block h-full origin-left rounded-full bg-ink",
+                    "transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]",
+                    done || active ? "scale-x-100" : "scale-x-0",
+                  )}
+                />
+              </span>
               <span
                 className={cn(
                   "mt-2 block text-[0.6875rem] font-mono uppercase tracking-wide transition-colors",

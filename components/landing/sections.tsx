@@ -275,7 +275,7 @@ export function Faq() {
 
         <div className="mt-8 divide-line overflow-hidden rounded-[var(--radius-lg)] border border-line bg-elevated sm:mt-12">
           {items.map((item) => (
-            <details key={item.q} className="group">
+            <details key={item.q} className="group disclosure">
               <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 text-[0.9375rem] font-medium interactive hover:bg-tint active:bg-tint-strong sm:px-6 sm:py-5 [&::-webkit-details-marker]:hidden">
                 {item.q}
                 {/* A plus that loses its vertical stroke on open, so the
@@ -285,7 +285,10 @@ export function Faq() {
                   className="relative size-4 shrink-0 text-ink-subtle before:absolute before:left-0 before:top-1/2 before:h-px before:w-4 before:bg-current after:absolute after:left-1/2 after:top-0 after:h-4 after:w-px after:bg-current after:transition-transform after:duration-200 group-open:after:scale-y-0"
                 />
               </summary>
-              <p className="animate-fade -mt-1 max-w-3xl px-5 pb-4 text-[0.8125rem] leading-relaxed text-ink-muted sm:px-6 sm:pb-5">
+              {/* No entry keyframe of its own: `.disclosure` opens the answer
+                  at a rate, and a fade layered on top of that would land the
+                  text before the box has finished making room for it. */}
+              <p className="-mt-1 max-w-3xl px-5 pb-4 text-[0.8125rem] leading-relaxed text-ink-muted sm:px-6 sm:pb-5">
                 {item.a}
               </p>
             </details>

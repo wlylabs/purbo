@@ -258,8 +258,10 @@ export function CommandPalette({
       }}
       className={cn(
         "m-auto mt-[12vh] w-[calc(100vw-2rem)] max-w-xl bg-transparent p-0 text-ink",
-        "backdrop:bg-overlay backdrop:backdrop-blur-[2px]",
-        "open:animate-in-up",
+        // The palette is opened and dismissed more often than anything else
+        // in the app, so it is the one place a jump-cut close is most worth
+        // not having. See `.dialog-reveal` in `app/globals.css`.
+        "dialog-reveal",
       )}
     >
       <div className="flex max-h-[70vh] flex-col overflow-hidden rounded-[var(--radius-lg)] border border-line bg-elevated shadow-modal">
@@ -300,6 +302,11 @@ export function CommandPalette({
                   onClick={(event) => void run(action, event.shiftKey)}
                   className={cn(
                     "flex w-full items-center gap-3 rounded-[var(--radius-sm)] px-3 py-2.5 text-left",
+                    // The highlight eases between rows instead of blinking
+                    // from one to the next, which is what stops a held arrow
+                    // key from strobing down the list. The press fill answers
+                    // a tap, where there is no hover to have answered it.
+                    "interactive active:bg-tint-strong",
                     index === active ? "bg-tint" : "bg-transparent",
                   )}
                 >
@@ -312,7 +319,9 @@ export function CommandPalette({
 
         <footer className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-line px-4 py-2.5 text-[0.6875rem] text-ink-subtle">
           {feedback ? (
-            <p role="status" className="text-ink-muted">
+            // Keyed on the message so a second copy in the same session
+            // re-plays the fade rather than silently swapping the words.
+            <p key={feedback} role="status" className="animate-fade text-ink-muted">
               {feedback}
             </p>
           ) : (
