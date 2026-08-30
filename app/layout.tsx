@@ -3,6 +3,7 @@ import { GeistMono } from "geist/font/mono";
 import { GeistSans } from "geist/font/sans";
 import { headers } from "next/headers";
 
+import { LaunchHandler } from "@/components/pwa/launch-handler";
 import { ServiceWorker } from "@/components/pwa/service-worker";
 import { THEME_SCRIPT } from "@/components/theme";
 import { Providers } from "./providers";
@@ -106,6 +107,7 @@ export default async function RootLayout({
           Skip to content
         </a>
         <Providers>{children}</Providers>
+        <LaunchHandler />
         <ServiceWorker />
       </body>
     </html>

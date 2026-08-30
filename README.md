@@ -18,7 +18,7 @@ The server stores ciphertext and nothing else.
 | --- | --- |
 | Framework | Next.js 16 (App Router), React 19, TypeScript |
 | Styling | Tailwind CSS v4, Geist Sans/Mono |
-| App shell | Installable PWA — web app manifest, hand-written service worker |
+| App shell | Installable PWA — web app manifest, link handling, hand-written service worker |
 | Auth | Self-derived — Ed25519 challenge–response from the recovery phrase, plus WebAuthn passkeys |
 | Storage | Upstash / Vercel KV (encrypted blobs only) |
 | Crypto | WebCrypto (AES-256-GCM, HKDF-SHA-256, HMAC), Argon2id via `hash-wasm`, BIP39 via `@scure/bip39`, Ed25519 via `@noble/curves` |
@@ -279,6 +279,33 @@ npm run screenshots
 The output is committed too, so a deploy never depends on either script
 having run.
 
+### Links open in the app
+
+Installed, Purbo behaves the way an app the system knows about behaves: a link
+to it opens *in* it. The manifest asks to handle the links in its scope
+(`handle_links`), so a vault link from a note, a chat, or a search result
+arrives in the app window instead of a browser tab that happens to be pointed
+at the same origin.
+
+What should happen when a window is already open is where a password manager
+parts company with the usual advice. The natural client mode for a link that
+names a destination is `navigate-existing` — but navigating a document reloads
+it, and a reload discards the key held in memory, so following a link to a
+section would lock the vault that was open a second earlier. The manifest asks
+for `focus-existing` instead: the browser raises the running window and hands
+the URL to the page, and `components/pwa/launch-handler` applies it as a
+client-side navigation. The window that was open stays open, still unlocked,
+now showing what the link asked for. A launch target that is not an ordinary
+in-scope page of this origin is dropped rather than followed — browsers are
+specified never to send one, and this does not take that on trust.
+
+Sections are addressable so there is something for a link to point at:
+`?tab=generator` is read on the way in and written back as you move between
+tabs, which is what makes the manifest's shortcuts, a bookmark, and a link
+someone sends you all land in the same place. Link capturing is Chromium's for
+now; elsewhere a link opens a window at that URL in the ordinary way, which is
+the behaviour this improves on rather than depends on.
+
 ### The trade-off
 
 Because no key material reaches the server, **nobody can reset a passphrase or
@@ -377,7 +404,7 @@ lib/
   auth/               Identity derivation, session tokens, passkeys
   vault/              Key hierarchy, record encryption, state machine, merge, tags, import
   storage/            IndexedDB cache, tab session keys, remote sync client
-  pwa/                Install-prompt state
+  pwa/                Install-prompt state, launch (link) handling
   server/             Auth, tokens, KV driver, rate limiting, wire validation
 components/           Landing sections, vault UI, design-system primitives
 public/sw.js          Service worker — app shell only, never vault data

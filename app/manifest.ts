@@ -1,6 +1,17 @@
 import type { MetadataRoute } from "next";
 
 /**
+ * Manifest members Next's `Manifest` type does not know about yet.
+ *
+ * The manifest route hands whatever this function returns to `JSON.stringify`
+ * without inspecting it, so an unmodelled member is served verbatim; the type
+ * is the only thing in the way.
+ */
+type AppManifest = MetadataRoute.Manifest & {
+  handle_links?: "auto" | "preferred" | "not-preferred";
+};
+
+/**
  * Web app manifest.
  *
  * Purbo installs as a standalone app because that is how a password manager
@@ -9,7 +20,7 @@ import type { MetadataRoute } from "next";
  * in IndexedDB, so an installed copy that has been unlocked once on a device
  * stays usable with no network at all.
  */
-export default function manifest(): MetadataRoute.Manifest {
+export default function manifest(): AppManifest {
   return {
     id: "/",
     name: "Purbo — Encrypted password manager",
@@ -24,6 +35,37 @@ export default function manifest(): MetadataRoute.Manifest {
 
     display: "standalone",
     display_override: ["standalone", "minimal-ui"],
+
+    /*
+     * Links to Purbo open in Purbo, the way they would for any app the
+     * operating system knows about.
+     *
+     * Installed, the app owns everything under `scope`, so a vault link from
+     * a note, a chat, or a search result arrives in the app window instead of
+     * a browser tab that happens to be pointed at the same origin. It is
+     * "preferred" rather than "auto" because auto leaves the decision to the
+     * browser, which today means it does not happen at all.
+     */
+    handle_links: "preferred",
+
+    /*
+     * A captured link focuses the window that is already open; it does not
+     * navigate it.
+     *
+     * This is the one place where a password manager parts company with the
+     * usual advice. `navigate-existing` is the natural choice for a link that
+     * names a destination — but navigating a document reloads it, and a reload
+     * discards the decryption key held in memory. Following a link to a vault
+     * section would therefore lock the vault that was open a second ago, which
+     * is precisely what the service worker's update prompt exists to avoid
+     * doing silently.
+     *
+     * So the running window is focused instead, and the app applies the
+     * launch URL itself, client-side, from `components/pwa/launch-handler`.
+     * `auto` follows for browsers that implement no client mode at all: a new
+     * window, which is the pre-launch-handler behaviour and still correct.
+     */
+    launch_handler: { client_mode: ["focus-existing", "auto"] },
 
     // The splash screen matches the icon rather than the active theme —
     // one identity, not two.
