@@ -1,9 +1,10 @@
 "use client";
 
 import { KeyRound, Settings, Wand2 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Tabs, tabIds, type TabItem } from "@/components/ui/tabs";
+import { onLaunch } from "@/lib/pwa/launch";
 import { useVault } from "@/lib/vault/provider";
 import { CommandPalette } from "./command-palette";
 import { Generator } from "./generator";
@@ -40,13 +41,52 @@ export function Dashboard() {
     [items.length],
   );
 
-  // `?tab=` backs the manifest's app shortcuts, so "Password generator" on a
-  // long-press of the installed icon lands somewhere useful. Read after mount
-  // rather than during render: the server has no query string to match.
+  /**
+   * `?tab=` is a section's address, and it is read in both directions.
+   *
+   * Reading it is what makes the manifest's app shortcuts — "Password
+   * generator" on a long-press of the installed icon — and any link to a
+   * section land somewhere useful. It happens after mount rather than during
+   * render, because the server has no query string to match.
+   *
+   * The launch subscription covers what mounting cannot. An installed app
+   * that captures a link while it is already open is focused, not reloaded,
+   * so the URL changes underneath a component that never remounts; without
+   * this, following a link to the generator would raise a window still
+   * showing the vault.
+   */
   useEffect(() => {
-    const requested = new URLSearchParams(window.location.search).get("tab");
-    if (isTab(requested)) setTab(requested);
+    const applyUrl = () => {
+      const requested = new URLSearchParams(window.location.search).get("tab");
+      if (isTab(requested)) setTab(requested);
+    };
+    applyUrl();
+    return onLaunch(applyUrl);
   }, []);
+
+  /**
+   * Writing it back keeps the address honest about what is on screen, so the
+   * URL of the generator can be copied out of an app window and followed back
+   * into one.
+   *
+   * `replaceState` rather than a router navigation, since the route has not
+   * changed and there is nothing to re-fetch; and rather than a history
+   * entry, because Back should leave a section the way it leaves any other,
+   * not walk backwards through the tabs that were visited. The first run is
+   * skipped: at mount the URL is the source of truth, not the copy.
+   */
+  const tabWritten = useRef(false);
+  useEffect(() => {
+    if (!tabWritten.current) {
+      tabWritten.current = true;
+      return;
+    }
+    const url = new URL(window.location.href);
+    // "vault" is where the app opens, so it is spelled by its absence.
+    if (tab === "vault") url.searchParams.delete("tab");
+    else url.searchParams.set("tab", tab);
+    if (url.href !== window.location.href) window.history.replaceState(null, "", url);
+  }, [tab]);
 
   return (
     <div className="flex flex-1 flex-col">
