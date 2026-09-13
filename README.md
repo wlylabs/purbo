@@ -371,6 +371,19 @@ npm run typecheck
 npm run build
 ```
 
+### Reviewing the interface
+
+The design system states its intent in comments — why a control has a 3:1 edge
+instead of a shadow, why a press is not animated — and intent is worth what it
+can be checked against. Two MCP servers are declared in `.mcp.json` so that an
+assistant can load a running screen in a real browser and measure it: Chrome
+DevTools for computed styles, the console and performance traces, Playwright
+for the accessibility tree and the keyboard path.
+
+Both launch with a throwaway browser profile, which for a password manager is
+the point rather than a detail. [`docs/ui-mcp.md`](docs/ui-mcp.md) covers the
+setup; `.claude/skills/ui-review/` holds the standard a review is against.
+
 ## Deploying to Vercel
 
 1. Import the repository into Vercel. The framework preset is detected
@@ -412,6 +425,9 @@ public/screenshots/   Manifest screenshots for the install dialog
 scripts/              Icon and screenshot generation, build-integrity verification
 proxy.ts              Per-request CSP nonce and security headers
 tests/                Crypto, merge and API-route checks
+.mcp.json             Browser MCP servers used for interface review
+.claude/skills/       Project skills — the UI review standard
+docs/ui-mcp.md        How those servers are wired and what they check
 SECURITY.md           Vulnerability disclosure policy
 ```
 
